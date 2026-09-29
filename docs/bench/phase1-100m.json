@@ -1,0 +1,32 @@
+{
+  "version": "dev",
+  "host": "Mustafas-MacBook-Pro.local",
+  "goarch": "arm64",
+  "goos": "darwin",
+  "cpus": 16,
+  "ran_at": "2026-08-24T12:48:30.238306Z",
+  "results": [
+    {
+      "sync_mode": "none",
+      "producers": 256,
+      "events": 100000000,
+      "payload_bytes": 256,
+      "linger": "0s",
+      "duration_sec": 211.52629775,
+      "events_per_sec": 472754.4568391615,
+      "mib_per_sec": 188.45629103217144,
+      "batches": 625920,
+      "events_per_batch": 159.7648277735174,
+      "p50_ms": 0.530583,
+      "p99_ms": 1.517125,
+      "p999_ms": 3.322083,
+      "max_ms": 17.858083,
+      "segments_sealed": 2940,
+      "meets_throughput_target": true,
+      "meets_latency_target": true
+    }
+  ],
+  "verify_ok": true,
+  "verify_events": 100000001,
+  "verify_ms": 254504
+}

@@ -1,0 +1,6 @@
+validator watching 5 sagas on host.docker.internal:7951
+answered credit-opinion on sg_ag_app_06/disburse: pass
+answered credit-opinion on sg_ag_app_07/disburse: pass
+answered credit-opinion on sg_ag_app_08/disburse: pass
+answered credit-opinion on sg_ag_app_09/disburse: pass
+answered credit-opinion on sg_ag_app_10/disburse: pass

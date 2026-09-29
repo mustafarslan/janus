@@ -1,0 +1,26 @@
+{
+  "id": "gdpr",
+  "framework": "Regulation (EU) 2016/679 — General Data Protection Regulation",
+  "jurisdiction": "EU",
+  "version": "0.1.0",
+  "source": "Regulation (EU) 2016/679",
+  "articles": [
+    {
+      "id": "Art.30",
+      "title": "Records of processing activities, including transfers to third countries",
+      "requires": [
+        "every_participant_declares_jurisdiction",
+        "every_active_manifest_is_signed"
+      ],
+      "note": "Art. 30(1)(e) asks a controller's record to name transfers to third countries. This checks every registered participant declares where it may run and where its data rests, and that each declaration is attributable to whoever signed it. It does not produce the Art. 30 record itself, and it cannot see a processor nobody registered — an omission from the registry is invisible here by construction."
+    },
+    {
+      "id": "Art.44",
+      "title": "General principle for transfers: personal data leaves the union only under Chapter V",
+      "requires": [
+        "jurisdiction_is_pinned_and_enforced"
+      ],
+      "note": "Checks that this deployment pins a jurisdiction and that admission would refuse a step whose participant may not be used there. It is a control over where work is *sent*, not a legal assessment: whether a transfer that does happen has an adequacy decision, standard contractual clauses, or a derogation under Art. 49 is a question about instruments this repository does not hold. It covers release as well as admission: the outbox refuses to hand a committed effect to a target the log does not place inside the pinned jurisdiction, including one nothing registered at all. What it cannot check is whether a declaration is true — every placement here is something an operator or a manifest author wrote down. A deployment that has not pinned a jurisdiction reports UNKNOWN rather than satisfied — the absence of the control is not the presence of one."
+    }
+  ]
+}

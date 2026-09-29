@@ -1,0 +1,25 @@
+{
+  "id": "rts-25",
+  "framework": "Commission Delegated Regulation (EU) 2017/574 — RTS 25, the level of accuracy of business clocks",
+  "jurisdiction": "EU",
+  "version": "0.1.0",
+  "source": "Commission Delegated Regulation (EU) 2017/574, Articles 1 and 4, read from EUR-Lex",
+  "articles": [
+    {
+      "id": "Art.1",
+      "title": "Reference time: business clocks used to record a reportable event are synchronised with UTC",
+      "requires": [
+        "business_clocks_are_traceable_to_utc"
+      ],
+      "note": "Art. 1 requires operators and their members or participants to synchronise the business clocks they use to record the date and time of any reportable event with Coordinated Universal Time. This checks what the log can demonstrate about that: every event's wall reading points at a recorded attestation of what the clock was checked against, and every attestation found the clock synchronised. It does not make a deployment's events reportable events, and it says nothing about clocks outside Janus — a firm's order-entry clock is not this clock. Scope: RTS 25 binds trading venues and their members or participants. A deployment outside that population is not in scope for this pack at all, and a satisfied finding here is not a claim that it is."
+    },
+    {
+      "id": "Art.4",
+      "title": "Compliance with maximum divergence requirements: a system of traceability to UTC that the firm can demonstrate",
+      "requires": [
+        "business_clocks_are_traceable_to_utc"
+      ],
+      "note": "Art. 4 requires a system of traceability to UTC and the ability to demonstrate it, by documenting the system design, functioning and specifications, with a review at least once a year. This is the article the attestation record exists to serve: it is the one compliance question that cannot be answered from a declaration, because a demonstration is a thing you either recorded or did not. What this covers is the recorded half — that the clock was checked, against what, and how far off it was. It does not produce the documentation Art. 4 asks for, does not perform the annual review, and does not evidence that the review happened. The declared tolerance is now in the record: each attestation carries the bound the deployment claimed when it was taken, so this grades against that as well as Art. 2(2)'s one second, and a deployment that declared 100 ms no longer reads as satisfied on the article's second alone. Logs written before that field existed declare nothing, are graded against the article alone, and the finding says so. Annex Tables 1 and 2 set tolerances down to 100 microseconds for high-frequency algorithmic trading; the SNTP source this build ships is accurate to milliseconds and cannot demonstrate those, so a firm in that category needs a PTP-disciplined host clock and a source that reads it. Those tables are not mapped here because they were not read."
+    }
+  ]
+}

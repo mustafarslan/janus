@@ -1,0 +1,134 @@
+{
+  "name": "19-validator-disagreement-escalates",
+  "description": "two independent validators disagree, so the step is held for a human rather than the majority carrying it",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "intent": {
+          "intent_id": "in",
+          "principal": "bob",
+          "mandate_ref": "m-1"
+        },
+        "plan": [
+          {
+            "step_id": "wire",
+            "effect_class": "EFFECT_CLASS_IRREVERSIBLE_GATED"
+          }
+        ],
+        "gate_policy_version": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "gate_plan": [
+          {
+            "step_id": "wire",
+            "rule_id": "wires",
+            "require": [
+              {
+                "id": "second-opinion",
+                "gate": "GATE_TYPE_VALIDATOR",
+                "phase": "GATE_PHASE_PRE_RELEASE",
+                "validator": {
+                  "validators": [
+                    "val_a",
+                    "val_b"
+                  ],
+                  "quorum": 2,
+                  "escalate_on_disagreement": true
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_ANSWER",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "requirement_id": "second-opinion",
+        "attempt": 1,
+        "actor": {
+          "participant": {
+            "id": "val_a"
+          }
+        },
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "GATE_ANSWER",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "requirement_id": "second-opinion",
+        "attempt": 1,
+        "actor": {
+          "participant": {
+            "id": "val_b"
+          }
+        },
+        "verdict": "VERDICT_FAIL",
+        "reason": "the counterparty is not on the mandate"
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_VALIDATOR",
+        "verdict": "VERDICT_ESCALATE",
+        "reason": "the validators disagree, so this needs a human"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "GATED",
+    "intent_id": "in",
+    "last_seq": 6,
+    "event_count": 6,
+    "gate_policy": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "wire",
+        "status": "GATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "gates": [
+          "second-opinion@PRE_RELEASE"
+        ],
+        "gate": "ESCALATE via VALIDATOR",
+        "answers": [
+          "second-opinion@1 val_a=PASS",
+          "second-opinion@1 val_b=FAIL"
+        ]
+      }
+    ]
+  }
+}

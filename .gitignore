@@ -1,0 +1,58 @@
+# Build output.
+/bin/
+
+# Release artefacts from scripts/reproducible-build.sh. Not committed: the
+# checksums are the thing worth publishing, and they belong with a release
+# rather than in the tree that produced them.
+/dist/
+
+# `go build ./cmd/janus-foo` writes the binary into the working directory rather
+# than into bin/, so a stray one lands at the repository root and is easy to
+# commit by accident. Anchored to the root, and negated for the directory that
+# shares the prefix.
+/janus-*
+!/janus-keyring/
+
+# Evidence artifacts produced by running the tools locally. These patterns are
+# anchored to the repository root on purpose: an unanchored "keys/" once matched
+# pkg/evidence/keys and silently kept a source package out of the commit, which
+# CI caught only as a missing-package build error.
+/janus-evidence/
+/keys/
+*.jseg
+# ...except committed fixtures. `*.jseg` is unanchored on purpose — a stray
+# segment can land anywhere somebody ran a tool — and this is the negation that
+# keeps a deliberate one. `pkg/evidence/testdata/envelope-v2` holds a log written
+# by a build this one cannot read, and it has to be real bytes from a real writer
+# rather than a struct a test assembles, which is the whole reason it is a
+# fixture. The same unanchored-pattern mistake is what the comment above records.
+!pkg/evidence/testdata/**/*.jseg
+# The real-model runs the paper cites: an auditor is meant to be able to check
+# them from the log and the public key next to it. Never a key.
+!docs/bench/agentic/*/evidence/*.jseg
+
+# Private key material must never be committed, at any depth.
+*.key
+
+.DS_Store
+
+# Python bytecode and test caches. They arrive in the working tree because the
+# SDK's tests run in a container with this directory mounted, so the artefacts
+# land here rather than staying in the image.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.agentic-runs/
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.blg
+paper/*.synctex.gz
+paper/arxiv-janus.tar.gz
+paper/main.pdf
+paper/main.bbl

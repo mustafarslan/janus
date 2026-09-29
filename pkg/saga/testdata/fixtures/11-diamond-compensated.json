@@ -1,0 +1,289 @@
+{
+  "name": "11-diamond-compensated",
+  "description": "a diamond dependency undone in reverse order, where the join must go first",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "root",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "compensation_action": "root.undo"
+          },
+          {
+            "step_id": "left",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "depends_on": [
+              "root"
+            ],
+            "compensation_action": "left.undo"
+          },
+          {
+            "step_id": "right",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "depends_on": [
+              "root"
+            ],
+            "compensation_action": "right.undo"
+          },
+          {
+            "step_id": "join",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "depends_on": [
+              "left",
+              "right"
+            ],
+            "compensation_action": "join.undo"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "root"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "root",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "root",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "left"
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "left",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 7,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "left",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 8,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "right"
+      }
+    },
+    {
+      "seq": 9,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "right",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 10,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "right",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 11,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "join"
+      }
+    },
+    {
+      "seq": 12,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "join",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 13,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "join",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 14,
+      "kind": "COMPENSATE",
+      "payload": {
+        "saga_id": "sg"
+      }
+    },
+    {
+      "seq": 15,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "join~undo",
+        "compensates": "join"
+      }
+    },
+    {
+      "seq": 16,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "join~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 17,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "right~undo",
+        "compensates": "right"
+      }
+    },
+    {
+      "seq": 18,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "right~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 19,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "left~undo",
+        "compensates": "left"
+      }
+    },
+    {
+      "seq": 20,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "left~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 21,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "root~undo",
+        "compensates": "root"
+      }
+    },
+    {
+      "seq": 22,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "root~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMPENSATED",
+    "last_seq": 22,
+    "event_count": 22,
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "root",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "root~undo",
+        "gate": "PASS via UNSPECIFIED"
+      },
+      {
+        "id": "left",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "left~undo",
+        "gate": "PASS via UNSPECIFIED"
+      },
+      {
+        "id": "right",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "right~undo",
+        "gate": "PASS via UNSPECIFIED"
+      },
+      {
+        "id": "join",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "join~undo",
+        "gate": "PASS via UNSPECIFIED"
+      }
+    ]
+  }
+}

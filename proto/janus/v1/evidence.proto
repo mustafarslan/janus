@@ -1,0 +1,247 @@
+syntax = "proto3";
+
+package janus.v1;
+
+import "janus/v1/jtp.proto";
+
+option go_package = "github.com/mustafarslan/janus/gen/go/janus/v1;janusv1";
+
+// EventKind names the payload carried by an evidence event.
+//
+// The canonical, hashed form of the event *envelope* is deterministic CBOR
+// defined in pkg/evidence. This enum exists for the
+// wire/transport side and is kept in lockstep with the Go constants by
+// TestEventKindsMatchProto — do not add a value here without adding the Go
+// constant.
+enum EventKind {
+  EVENT_KIND_UNSPECIFIED = 0;
+
+  // JTP vocabulary (jtp.proto) — payload is the message of the same name.
+  EVENT_KIND_SAGA_BEGIN = 1;
+  EVENT_KIND_STEP_PREPARE = 2;
+  EVENT_KIND_STEP_RESULT = 3;
+  EVENT_KIND_GATE_VERDICT = 4;
+  EVENT_KIND_SEAL_REQUEST = 5;
+  EVENT_KIND_COMMIT = 6;
+  EVENT_KIND_COMPENSATE = 7;
+  EVENT_KIND_ABORT = 8;
+  EVENT_KIND_QUARANTINE = 16;
+
+  // Decision provenance — the "why" of one model-mediated decision.
+  EVENT_KIND_DPR = 9;
+
+  // Janus watching itself: control-plane mutations flow through the same
+  // pipeline.
+  EVENT_KIND_CONTROL = 10;
+
+  // Interception edge: a message observed by janus-mcpd or janus-a2ad.
+  EVENT_KIND_MCP_MESSAGE = 11;
+  EVENT_KIND_A2A_MESSAGE = 12;
+
+  // Evidence-plane housekeeping. RECOVERY is appended when a writer seals a
+  // segment it did not open (crash recovery), so the discontinuity in segment
+  // custody is itself on the record.
+  EVENT_KIND_RECOVERY = 13;
+  EVENT_KIND_SHRED = 14;
+  EVENT_KIND_CLOCK_ATTESTATION = 15;
+
+  // Outbox: the lifecycle of an irreversible effect that is withheld until the
+  // saga commits (outbox.proto).
+  //
+  // All four are recorded rather than kept in a queue somewhere, because the
+  // question "did this effect fire, and on whose authority?" has to be
+  // answerable from the log alone years later. RELEASING in particular is not
+  // bookkeeping: it is the record that must be durable *before* a side effect
+  // is attempted, which is what makes invariant I1 structural instead of
+  // aspirational.
+  EVENT_KIND_EFFECT_HELD = 17;
+  EVENT_KIND_EFFECT_RELEASING = 18;
+  EVENT_KIND_EFFECT_DELIVERED = 19;
+  EVENT_KIND_EFFECT_QUARANTINED = 20;
+
+  // An answer to a gate from outside Janus: a validator's opinion or a human's
+  // approval.
+  //
+  // It is a separate event rather than a field on the verdict because the
+  // answer and the decision are made by different parties at different times,
+  // and the gap between them is where a saga sits waiting. Recording the answer
+  // on arrival is also what keeps replay deterministic: a resumed coordinator
+  // folds the approval that was given rather than asking a human to give it
+  // again.
+  EVENT_KIND_GATE_ANSWER = 21;
+
+  // A mutation of the participant registry: a manifest registered, evaluated,
+  // activated, suspended or retired (registry.proto).
+  //
+  // It is in the same log as the sagas it governs rather than in a table beside
+  // them, because a saga pins a manifest version and the pin has to resolve
+  // against what the registry held *then*. A registry whose history lived
+  // outside the log could answer what a participant is allowed to do today and
+  // nothing about what it was allowed to do when the payment went out.
+  EVENT_KIND_REGISTRY = 22;
+
+  // IDENTITY_TRUST records who this deployment is willing to believe about a
+  // person: an OIDC issuer's signing key, or a WebAuthn credential bound to a
+  // subject.
+  //
+  // In the log for the same reason the registry is. An approval is verified
+  // against a key, and a verifier holding whatever keys it likes proves
+  // whatever it wanted to prove. Recorded, the store folds to the sequence the
+  // approval was given at — so a key rotated afterwards stops verifying new
+  // approvals without making yesterday's fraudulent.
+  EVENT_KIND_IDENTITY_TRUST = 23;
+
+  // WRITER_KEY declares which key signs this log's segments, and withdraws one.
+  //
+  // It is what lets an auditor be handed *one* public key rather than every key
+  // the log was ever written under: trust flows forward from a root established
+  // out of band, each rotation introduced by a segment the previous key signed.
+  // A rotation removed from the log breaks the chain hash, so a key cannot be
+  // withheld — which was the failure this exists for, because a withheld key
+  // and a corrupted segment look identical from the outside.
+  //
+  // Its payload is deliberately CBOR rather than a protobuf message, and it is
+  // the only event kind that is. janus-verify has to read it, and janus-verify
+  // is the one artifact an auditor compiles themselves — linking the
+  // protobuf runtime into it takes the binary from 7 MB to 16 MB for one event
+  // type. The rule that payloads are protobuf is about the JTP vocabulary Janus
+  // speaks to other systems; this is metadata about the log's own signing, in the
+  // same layer as the envelope and the segment footer, which are already CBOR.
+  EVENT_KIND_WRITER_KEY = 24;
+
+  // WRITER_TENURE records a replica becoming the writer after a failover: the
+  // sequence and chain hash it continues from, the head the previous writer had
+  // acknowledged, the key it will sign with, and the operator who decided.
+  //
+  // CBOR too, and for the same reason as WRITER_KEY: `janus-verify` has to read
+  // it to check that a tenure continues from where it claims, and the verifier
+  // is the artifact an auditor compiles themselves. The CBOR codec is already
+  // linked there for WRITER_KEY, so the cost is the decode path rather than a
+  // runtime: measured at +5,947 bytes on linux/amd64, against the 9.3 MB the
+  // protobuf runtime would have added.
+  EVENT_KIND_WRITER_TENURE = 25;
+
+  // LEGAL_HOLD freezes disposal for a matter, and releases it again.
+  //
+  // In the log rather than in a process's memory because a hold is a claim
+  // somebody has to be able to make about the past: that on this date, for this
+  // matter, this deployment stopped destroying these records. An in-memory hold
+  // answers "is it held now" and nothing else, and answers even that wrongly
+  // after a restart.
+  //
+  // Protobuf, not CBOR: `janus-verify` does not read these. A hold governs what
+  // may be destroyed, which is a question for the deployment holding the data,
+  // not for an auditor checking that the bytes are intact.
+  EVENT_KIND_LEGAL_HOLD = 26;
+}
+
+// LegalHoldEvent places or releases a legal hold.
+//
+// A hold freezes disposal for a matter regardless of what the retention
+// schedule says, and both placing and releasing one are recorded, because the
+// two facts a lawyer needs are when destruction stopped and when it was allowed
+// to resume.
+//
+// **These events never set the envelope's subject**, even when the hold is
+// scoped to one. Setting it would seal the payload under that subject's data
+// encryption key, so erasing the subject would destroy the hold protecting
+// them — the record would go unreadable at exactly the moment it mattered. The
+// scope below is plaintext for the same reason `registry` events are never
+// encrypted: a record about the administration of the system is not a record
+// about a person, even when it names one.
+message LegalHoldEvent {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_PLACED = 1;
+    KIND_RELEASED = 2;
+  }
+  Kind kind = 1;
+
+  // hold_id identifies the hold across its placement and its release.
+  string hold_id = 2;
+  // matter names the litigation, investigation, or supervisory request. A hold
+  // with no matter is a hold nobody can later justify or lift.
+  string matter = 3;
+  // actor is the accountable person placing or releasing. Disposal resuming is
+  // a decision somebody made, and this is who.
+  string actor = 4;
+
+  // scope selects what is frozen; every non-empty field must match, and an
+  // entirely empty scope freezes everything. Four repeated fields rather than
+  // an encoded blob, so that "which holds cover this subject" is a question the
+  // log answers rather than one a reader has to parse for.
+  repeated string saga_ids = 5;
+  repeated string subjects = 6;
+  repeated string classes = 7;
+  repeated string tenants = 8;
+
+  // reason is set on a release: why disposal was allowed to resume.
+  string reason = 9;
+}
+
+// DecisionProvenanceRecord is the structured "why" behind a model-mediated
+// decision. Inputs and outputs are content-addressed rather than inlined
+// so that personal data can be crypto-shredded without breaking the hash chain.
+message DecisionProvenanceRecord {
+  string dpr_id = 1;
+  string saga_id = 2;
+  string step_id = 3;
+
+  enum DecisionKind {
+    DECISION_KIND_UNSPECIFIED = 0;
+    DECISION_KIND_PLAN = 1;
+    DECISION_KIND_ACT = 2;
+    DECISION_KIND_VALIDATE = 3;
+    DECISION_KIND_COMPENSATE = 4;
+    DECISION_KIND_ROUTE = 5;
+  }
+  DecisionKind decision_kind = 4;
+
+  message Input {
+    enum Role {
+      ROLE_UNSPECIFIED = 0;
+      ROLE_SYSTEM = 1;
+      ROLE_CONTEXT = 2;
+      ROLE_TOOL_RESULT = 3;
+      ROLE_MEMORY = 4;
+      ROLE_USER = 5;
+    }
+    Role role = 1;
+    string cas_ref = 2;
+    bytes hash = 3;
+  }
+  repeated Input inputs = 5;
+
+  message ModelRef {
+    string id = 1;
+    string version = 2;
+    string serving_fingerprint = 3;
+    double temperature = 4;
+    double top_p = 5;
+    int64 seed = 6;
+    string provider_attestation = 7;
+  }
+  ModelRef model = 6;
+
+  message Output {
+    string cas_ref = 1;
+    bytes hash = 2;
+    string schema_id = 3;
+    string parse_status = 4;
+  }
+  Output output = 7;
+
+  // Machine- and human-readable justification structure. This is what CFPB
+  // adverse-action and GDPR Art. 15 exports are generated from.
+  message Ground {
+    string claim = 1;
+    repeated string evidence_refs = 2;
+    string source = 3;
+  }
+  repeated Ground grounds = 8;
+
+  repeated GateVerdict validations = 9;
+  string parent_dpr = 10;
+  string intent_ref = 11;
+  string counterfactual_note = 12;
+}

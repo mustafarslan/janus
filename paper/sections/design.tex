@@ -1,0 +1,171 @@
+\section{Design}
+\label{sec:design}
+
+\Cref{fig:arch} shows the parts. Janus is written in Go (56{,}324 lines, plus
+44{,}893 lines of tests) with a Python SDK. % source: find pkg cmd -name '*.go' | wc (2026-09-27)
+The wire vocabulary is Protocol Buffers and is the same grammar the log records,
+so a message and the evidence of it are one type.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  box/.style={draw,rounded corners=2pt,align=center,minimum height=0.7cm,inner sep=2.5pt,fill=white},
+  arr/.style={-{Latex[length=1.6mm]},thin}]
+\node[box,minimum width=1.55cm] (agent) at (0,1.1) {LLM agent\\(SDK)};
+\node[box,minimum width=1.55cm] (mcp) at (0,-0.1) {MCP\\proxy};
+\node[box,minimum width=2.3cm,minimum height=1.9cm] (orchd) at (2.95,0.5)
+  {\textbf{janus-orchd}\\[1pt]saga fold\\gates\\outbox\\registry};
+\node[box,minimum width=1.55cm] (val) at (5.9,1.1) {validator /\\approver};
+\node[box,minimum width=1.55cm] (tool) at (5.9,-0.1) {tool /\\effect};
+\node[box,minimum width=6.9cm] (log) at (2.95,-1.55)
+  {\textbf{evidence log}: CBOR envelopes, BLAKE3 chain, segments signed with\\Ed25519 over a Merkle root (RFC 6962 tree, BLAKE3)};
+\node[box,minimum width=2.2cm] (proj) at (1.2,-2.75) {projections\\(rebuildable)};
+\node[box,minimum width=2.2cm] (verify) at (4.7,-2.75) {janus-verify\\(auditor, offline)};
+\draw[arr] (agent.east) -- node[above,pos=0.45]{propose} (agent.east-|orchd.west);
+\draw[arr] (mcp.east) -- node[below,pos=0.45]{intercept} (mcp.east-|orchd.west);
+\draw[arr] ([yshift=4pt]orchd.east|-val) -- node[above]{question} ([yshift=4pt]val.west);
+\draw[arr] ([yshift=-4pt]val.west) -- node[below]{answer} ([yshift=-4pt]orchd.east|-val);
+\draw[arr] (orchd.east|-tool) -- node[above]{2. release} (tool.west);
+\draw[arr] (orchd.south) -- node[right]{1. append} (orchd.south|-log.north);
+\draw[arr] (log.south-|proj) -- (proj.north);
+\draw[arr] (log.south-|verify) -- (verify.north);
+\end{tikzpicture}
+\caption{Janus. A decision is appended (1) before the effect it permits is
+released; answers from outside arrive as records, not calls. The log is the only
+source of truth: projections are rebuilt from it, and an auditor needs only the
+log and a public key.}
+\label{fig:arch}
+\end{figure}
+
+\subsection{The evidence log}
+\label{sec:design-log}
+Each record is a CBOR envelope---kind, saga, step, participant, timestamps, the
+hash of its payload---around a Protocol Buffers payload. Records are chained: a
+record's chain hash is BLAKE3 over the previous chain hash, its payload hash and
+its header. Records are grouped into segments, and a segment's footer carries a
+Merkle root over its records and one Ed25519 signature binding that root to the
+segment header, the record count and the sequence range. The tree has the
+structure of RFC~6962~\S2.1 (since obsoleted by RFC~9162)~\cite{rfc6962,rfc9162},
+instantiated with BLAKE3 rather than SHA-256, and is built per segment so that
+signing is off the per-event path. A single event is proven by an inclusion
+proof against its segment's signed root. Rotations of the writer's key are
+records in the log, each declared in a segment its predecessor signed, so an
+auditor is handed one root key rather than a key list. The chain and the tree
+are the tamper-evident logging literature's data
+structures~\cite{schneierkelsey,crosbywallach,haberstornetta}; its defence against
+a compromised logger is not implemented (\cref{sec:related,sec:model-out}).
+
+A single writer appends, with group commit: concurrent callers are batched and
+share one durability barrier. Everything else---the relational projections the
+console and the gates query, the saga index, the registry view---is rebuilt from
+the log and is never the source of truth; a projection answers only as far as
+it has folded and says so.
+
+\subsection{The saga engine}
+A saga's state is a fold over its records, a pure function with no clock and no
+I/O. The coordinator that drives it appends a record and only then acts on the
+state that record implies, so a coordinator killed at any point resumes from the
+log and reaches the same state. Compensation runs in reverse topological order
+of the plan's dependencies (I7), sub-sagas either cascade to their parent's
+commit or commit autonomously, and a frontier gate refuses a commit over an
+unsealed conflicting claim by another saga on the same resource (I6).
+
+\emph{Recorded histories keep their meaning.} Every saga's first record pins
+the version of the state-machine rules it was admitted under, stamped by the
+engine rather than by the caller, and the fold branches on that version. A
+change that makes a previously legal transition illegal is a new version;
+sagas recorded under the old one go on folding exactly as they did. A version
+the running build does not implement is refused, not guessed at. A replay
+corpus of recorded histories, each with the projection it produced, runs on
+every commit and fails if any history's meaning changes; at each of the three
+version bumps so far, every earlier fixture was byte-identical. The corpus catches
+a change of meaning only on the histories it contains, so a forgotten version bump
+on an uncovered path would pass.
+% source: pkg/saga/state.go (SemanticsVersion = 4); pkg/saga/testdata/fixtures (01-21 before the first bump, 22-26 added by the three bumps); make corpus
+
+\subsection{Gates}
+\label{sec:design-gates}
+Gate requirements are resolved from a versioned policy when a saga is admitted
+and recorded with it, so a saga is judged by the policy it was admitted under.
+Each requirement is decided in one of two phases: \emph{before execution}, on
+the facts the step proposes, or \emph{before release}, after it has run and
+before its effect leaves the outbox, on the facts it was prepared with and the
+results earlier steps published.
+Admission refuses a plan whose irreversible step would be judged at a moment
+that can no longer stop it. There are six gate types---schema, policy expression,
+risk limit, frontier, validator and human---composed into one verdict.
+% source: proto/janus/v1/common.proto (GateType)
+
+Three properties make a gate more than a check the agent can talk its way past.
+\emph{First, the fact set is closed}: a gate sees the values the step declared,
+facts Janus derives from the record (\code{step.action},
+\code{intent.principal}, \dots), and facts an \emph{earlier} step published under
+\code{result.<step>.<key>}---a namespace no step can declare into. A payment
+limit expressed against a balance reads a balance another step went and found;
+the paying step never states it. \emph{Second, answers from outside are recorded
+inputs}: a validator's opinion or a person's approval is a record, appended when
+it arrives, and the verdict is re-decided over the log. The gate never calls
+out, so a replay folds the approval that was given rather than asking again.
+A human requirement is answered by a person: an answer from a participant is
+refused whatever role it claims, except the system's refusal once the gate's
+deadline has passed. It can demand an identity established through OIDC and a
+WebAuthn step-up, and enforces separation of duty against the saga's principal
+and its declared originator---declared by the participant that signed the begin,
+not authenticated, so the check stops an honest mistake and not a liar. None of
+these was exercised in the runs we report. A participant signs what
+it asks to have recorded---an answer, a declaration, a result, a saga begin---with
+an Ed25519 key its registered manifest declares; the daemon checks the signature
+against the manifest version the saga pinned (the active one, for an answerer the
+plan does not name), and answers and results keep it, so
+the audit re-checks who answered from the log alone. A person's answer is signed
+by the participant relaying it, never by an agent.
+% source: pkg/callersig; pkg/orchd/callers.go; pkg/gate/audit_signatures.go; pkg/saga/state.go (applyGateAnswer); pkg/gate/checks.go (checkHuman)
+\emph{Third, an answer is bound to what it was asked about}: for a pre-execution
+gate, the proposal an escalation was decided on---its facts and any sub-saga it
+would delegate to---is pinned in the fold, every later verdict and the prepare on
+that attempt must be about the same proposal, an answer counts only in the phase
+its requirement is due and only once the question has been put, and the question
+an answerer receives carries the facts (\cref{sec:findings}).
+
+Each verdict is recorded with a \emph{decision provenance record} (DPR) naming
+the requirements, the policy version and the grounds; the verdict cites the
+record by event identifier, and the two share one durability barrier because no
+decision stands between them.
+
+\subsection{Effects and the interception edges}
+\label{sec:design-edges}
+An effect reaches the world through one of two paths, and they differ in how
+much they enforce. On the \emph{MCP edge}~\cite{mcp}, a proxy in front of an
+unmodified tool server turns each effectful call into a saga step and holds it
+in the outbox; the tool server is never called on a refusal, and a held effect
+is released only from a committed saga, under an idempotency key (I1, I4).
+Delivery is at least once: the outbox records the key, but the MCP proxy does
+not forward it, so a receiver that crashes mid-release may see a call twice.
+The A2A middleware~\cite{a2a} checks the counterpart against the registry and
+records both directions of a message, but does not gate or hold it.
+% source: pkg/mcp/gateway.go (key not forwarded); pkg/outbox (at-least-once release); pkg/a2a/proxy.go (no saga)
+On the \emph{SDK path}, a step's body is the effect and runs in the client: the
+body runs only if the pre-execution gates pass, and the proposal, the verdict
+and any refusal are durable before it does, but a client that ignored a
+refusal would not be stopped---only convicted by the log. We call the first
+\emph{mediation} and the second \emph{cooperative admission}, and
+\cref{sec:eval-model} exercises the second.
+
+An agent step can attach its own provenance: which model, how it was sampled,
+the hash of what it output, the hashes of what it was shown, and the grounds it
+gave. The daemon stamps the record's identity rather than trusting it, refuses a
+decision kind that is the gate's to make, and writes it immediately before the
+step's result, which cites it.
+
+\subsection{The offline verifier}
+\code{janus-verify} checks a log or an exported audit bundle against a trusted
+root key: signatures, chain, Merkle roots, inclusion proofs, sequence
+continuity, the writer-key chain and the envelope version, reporting each
+finding by severity. \code{janus-gate audit} re-derives every recorded gate
+verdict from the inputs recorded with it and reports any the inputs do not
+support. The verifier builds to identical bytes three ways~\cite{reproduciblebuilds} and links only what
+it reads: about 4.9\,MB today. Linking a Protocol Buffers runtime took an
+earlier, 7.0\,MB build to 16.3\,MB, so the payload it must parse (the
+writer-key record) is CBOR, and a CI test fails if a denied package enters its
+import graph.
+% source: make repro (4,936,754 bytes, three builds identical); cmd/janus-verify import-graph test (TestTheVerifierLinksOnlyWhatItReads); 7.0 -> 16.3 MB measured when the protobuf runtime was linked

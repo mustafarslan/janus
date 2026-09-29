@@ -1,0 +1,106 @@
+{
+  "name": "10-gate-stops-irreversible",
+  "description": "a gate refuses an irreversible effect, which was therefore never released; the saga has nothing to undo and must not quarantine for a gate doing its job",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "wire",
+            "effect_class": "EFFECT_CLASS_IRREVERSIBLE_GATED"
+          }
+        ],
+        "gate_policy_version": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "gate_plan": [
+          {
+            "step_id": "wire",
+            "rule_id": "wires",
+            "require": [
+              {
+                "id": "approval",
+                "gate": "GATE_TYPE_POLICY",
+                "phase": "GATE_PHASE_PRE_RELEASE",
+                "policy": {
+                  "expr": "approved == true",
+                  "description": "a wire needs an approval on the record"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "facts": [
+          {
+            "key": "approved",
+            "flag": false
+          }
+        ]
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_POLICY",
+        "verdict": "VERDICT_FAIL",
+        "reason": "a wire needs an approval on the record — \"approved == true\" does not hold",
+        "decided": [
+          "approval"
+        ],
+        "facts": [
+          {
+            "key": "approved",
+            "flag": false
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMPENSATED",
+    "last_seq": 4,
+    "event_count": 4,
+    "abort_reason": "gate GATE_TYPE_POLICY refused: a wire needs an approval on the record — \"approved == true\" does not hold",
+    "gate_policy": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "wire",
+        "status": "REFUSED",
+        "attempt": 1,
+        "outcome": "OK",
+        "gates": [
+          "approval@PRE_RELEASE"
+        ],
+        "gate": "FAIL via POLICY",
+        "facts": [
+          "approved=false"
+        ]
+      }
+    ]
+  }
+}

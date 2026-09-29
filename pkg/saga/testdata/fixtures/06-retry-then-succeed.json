@@ -1,0 +1,87 @@
+{
+  "name": "06-retry-then-succeed",
+  "description": "a step fails retryably, is retried inside its budget, and then succeeds",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "flaky",
+            "effect_class": "EFFECT_CLASS_PURE",
+            "max_retries": 2
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "flaky"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "flaky",
+        "outcome": {
+          "status": "STATUS_RETRYABLE_ERROR"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "flaky"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "flaky",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "SEAL_REQUEST",
+      "payload": {
+        "saga_id": "sg"
+      }
+    },
+    {
+      "seq": 7,
+      "kind": "COMMIT",
+      "payload": {
+        "saga_id": "sg"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMMITTED",
+    "last_seq": 7,
+    "event_count": 7,
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "flaky",
+        "status": "COMMITTED",
+        "attempt": 2,
+        "outcome": "OK"
+      }
+    ]
+  }
+}

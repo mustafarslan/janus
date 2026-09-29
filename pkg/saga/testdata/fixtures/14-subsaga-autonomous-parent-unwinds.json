@@ -1,0 +1,104 @@
+{
+  "name": "14-subsaga-autonomous-parent-unwinds",
+  "description": "a parent unwinds after delegating to an autonomous sub-saga, so it compensates with its own declared action rather than recalling the child",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "intent": {
+          "intent_id": "in"
+        },
+        "plan": [
+          {
+            "step_id": "delegate",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "compensation_action": "delegate.undo"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "delegate",
+        "spawns": {
+          "saga_id": "sg_child",
+          "commit_mode": "CHILD_COMMIT_MODE_AUTONOMOUS"
+        }
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "delegate",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "delegate",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "ABORT",
+      "payload": {
+        "saga_id": "sg",
+        "reason_ref": "operator cancelled"
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "delegate~undo",
+        "compensates": "delegate"
+      }
+    },
+    {
+      "seq": 7,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "delegate~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMPENSATED",
+    "intent_id": "in",
+    "last_seq": 7,
+    "event_count": 7,
+    "abort_reason": "operator cancelled",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "delegate",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "delegate~undo",
+        "child": "sg_child:AUTONOMOUS",
+        "gate": "PASS via UNSPECIFIED"
+      }
+    ]
+  }
+}

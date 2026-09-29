@@ -1,0 +1,126 @@
+\section{What Building the Evaluation Found}
+\label{sec:findings}
+
+Janus was built one phase at a time, each phase closing on an exit gate.
+Before the real-model experiment of \cref{sec:eval-model} was designed, every
+exit gate the repository defines passed. Designing it still found four defects.
+We report the first because it is an instance of a known and consequential
+failure that an audit of the kind Janus runs cannot see, and the others because
+they share a shape worth naming.
+
+\subsection{An approval bound to an attempt is not bound to a proposal}
+\label{sec:swap}
+An answer from outside (\cref{sec:design-gates}) was bound to a requirement, an
+actor and an \emph{attempt}; the attempt was derived from the step's own state so
+that a future retry could not be approved in advance. What the attempt was
+\emph{not} bound to was the proposal. At a release gate this did not matter,
+because the step's prepare record pins the facts it ran on. At a
+\emph{pre-execution} gate nothing was pinned: an escalation recorded the facts it
+was decided on in its own record, and the fold discarded them. A participant held
+for approval on one amount could therefore declare another while the question
+was open, and the approval, once given, was counted for the second. A throwaway
+test against the daemon produced this log, which the state machine accepted as
+legal history and the gate audit re-derived as correct:
+
+\begin{lstlisting}
+GATE_VERDICT  ESCALATE  facts=[amount_minor: 100]
+GATE_ANSWER   PASS      reason="ok for 100"
+GATE_VERDICT  PASS      facts=[amount_minor: 1000000]
+STEP_PREPARE            facts=[amount_minor: 1000000]
+\end{lstlisting}
+% source: the probe's log, abridged (record-kind prefixes shortened); regression tests TestAnApprovalIsNotCountedForAProposalItWasNotGivenFor, TestAParticipantCannotChangeAProposalWhileItIsBeingDecided (pkg/saga, pkg/orchd)
+
+A second route needed no re-declaration at all. The daemon held the proposal in
+memory, so after a restart between the escalation and the answer, the approval
+was decided on whatever the participant's \emph{next} prepare carried---a
+break in execution continuity across a restart of the kind Safe to
+Resume~\cite{saferesume} studies.
+
+Neither the binding nor its failure is new. Payment regulation requires that
+``any change to the amount or the payee results in the invalidation of the
+authentication code''~\cite{psd2rts}; Cordon binds a human approval to a
+transaction object, action, sink and time window~\cite{cordon}; NovaFabric links
+an approver-signed approval to a digest of its proposal~\cite{novafabric}; and
+other work binds the approval to the action re-checked at
+dispatch~\cite{wyaiwye,actioncard}. Loopjacking names this exact failure,
+\emph{post-approval state substitution}---``the human sees the correct A and
+mutable workflow state later replaces it with B''---reproduces it in two agent
+servers, and warns that ``binding only a call identifier is insufficient when a
+reducer can replace the arguments associated with that identifier''
+(\S6.2)~\cite{loopjacking}. Ours arose exactly so, from an approval keyed to an
+\emph{attempt}, in a system whose pending state is an append-only log. What it adds
+concerns the audit: the substitution is invisible to any audit that re-derives
+each verdict from its own recorded facts, because every individual record is
+well formed. The fix pins the escalated proposal in
+the fold, keyed by attempt; refuses any later verdict on that attempt about other
+facts; has the coordinator decide the pinned proposal rather than asking the
+agent again; and has the daemon refuse a re-declaration, including after a
+restart. Because it makes a
+previously legal transition illegal, it is the first bump of the saga semantics
+version; histories recorded before it still fold as they did, and a new audit
+finding, \code{PROPOSAL\_CHANGED}, is the only place a swap in such a history is
+named.
+
+The fix was not complete. A later reading of the code named four routes around
+it---a sub-saga that inherited an older parent's rules on its own say-so, an
+approval of no facts followed by a run on some, a delegation to a sub-saga held
+outside the pin, and a release-phase answer recorded before the step ran---and
+review of the fix for those found a fifth: an answer recorded before any question
+had been put. Each was confirmed by a throwaway test before anything changed; the
+second semantics bump closes them, and the audit names the ones a version-2 log
+can reveal.
+% source: TestNamingAnOldParentDoesNotBuyItsRules, TestAnApprovalOfNothingDoesNotLetAMillionRun, TestADelegationIsPartOfTheProposal, TestAReleaseApprovalIsNotTakenBeforeTheStepRuns, TestAnApprovalIsNotTakenBeforeTheQuestionIsAsked; audit: TestAuditNames* (pkg/gate)
+
+\subsection{Controls that work where they live}
+The other three share a shape this project had met once before, in the verifier
+itself (the first item below): a mechanism that works and is tested where it
+lives, and that nothing on the path a real caller takes ever reaches, or that a
+suite passes without exercising.
+\begin{itemize}
+\item \textbf{A truncation the suite could not see.} Earlier, the adversarial
+  auditor suite found the verifier saying something true but incomplete:
+  truncating a signed bundle at its \emph{end} left a valid prefix that verified,
+  while the suite---which removed segments from the middle---read 100\%. The fix
+  checks the signature over the bundle's segment list; reverting it takes the
+  suite's \code{truncated-bundle} attack to 0 of 1.
+  % source: cmd/janus-evilauditor (truncated-bundle attack); make evil-auditor
+\item \textbf{A question with the numbers blanked out.} A validator was asked to
+  approve a disbursement with no facts: the pending-gate message carried the
+  requirement and the attempt, and no call read a step's facts back out. Both
+  validators in the reference application were therefore \code{lambda *\_:
+  (True, \ldots)}, because there was nothing else they could be. The question now carries the closed fact set an expression gate
+  would see.
+\item \textbf{Provenance with no path, and a field silently dropped.} The decision
+  provenance record existed and the engine wrote it for gate decisions, but an
+  agent's own decision---the model, its sampling, its output---had no path
+  through the daemon; and a step's reported result hash was accepted on the wire
+  and discarded, which is worse than absence because the protocol permits it.
+\item \textbf{A refusal that could not fire.} ``One attempt has one outcome'' was
+  enforced only for a report the log did not yet hold. Once a result was
+  recorded, a second report of the same attempt saying something different was
+  answered \emph{already recorded}. A retry is now compared with the record.
+\end{itemize}
+
+For each fix, we broke the code and confirmed the new test failed. In three
+cases the test still passed against the broken code, and each exposed a further
+problem: a hand-written comparison missing the new field, one guard masking
+another, and a guard duplicating a check the fold already made.
+% source: each fix's regression test, e.g. TestAQuestionCarriesTheProposalItIsAbout, TestAStepsResultAndItsWhyAreOnTheRecord, TestOneAttemptHasOneAccountOfEverythingItReported
+Later work surfaced two more of the same kind. A result
+the state machine refused stayed in the daemon's memory, so every later step of
+its saga failed on it; and once callers signed what they sent, an agent could
+still record a person's approval under its own signature by naming both itself
+and the person, because the check read the participant and the fold counted the
+person. The first was found by writing the test for something else; the second
+in review of the fix.
+% source: TestAReportTheLogRefusedCanBeCorrected; TestAnAnswerIsFromAParticipantOrAPersonNotBoth
+
+An external review of this paper then ran the strictest configuration it
+describes---every caller signing, only a system participant relaying a person's
+answer---and had the gated agent answer a person's four-eyes requirement in its
+own name, signed with its own key, claiming the role the policy names. The saga
+committed and the audit was silent: the check counted the roles an answer
+claimed, and nothing required its actor to be a person. The third semantics bump
+refuses such an answer, and the audit names one in an older log
+(\code{NOT\_A\_PERSON}).
+% source: TestAPersonsApprovalIsGivenByAPerson, TestNoParticipantApprovesForAPerson, TestAuditNamesAPersonsApprovalAParticipantGave

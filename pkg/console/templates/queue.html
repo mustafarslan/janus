@@ -1,0 +1,82 @@
+{{define "queue.html"}}{{template "head" .}}
+{{$board := .Data}}{{$q := .Data.Items}}
+{{$readonly := .ReadOnly}}
+{{$who := .Approver}}
+<h1>waiting for a person</h1>
+<p class="lede">
+  A step here has run out of things Janus can decide by itself. Nothing moves until an
+  answer is recorded — and an answer recorded here is an ordinary event, not a decision:
+  the coordinator reads it and composes the verdict, applying the same separation-of-duty
+  rule to this approval as to any other.
+</p>
+
+{{if $readonly}}
+<div class="problem">
+  This console has no identity header configured, so it cannot say who is approving and will
+  not record an approval. Start it behind an authenticating proxy with <code>-identity-header</code>.
+</div>
+{{end}}
+
+{{template "asof" $board}}
+{{if not $q}}
+<div class="card">Nothing is waiting.</div>
+{{else}}
+{{range $item := $q}}
+<div class="card">
+  <h3>{{$item.Action}} <span class="tag">{{$item.EffectClass}}</span></h3>
+  <dl class="kv">
+    <dt>saga</dt><dd><a href="/sagas/{{$item.SagaID}}">{{$item.SagaID}}</a> · step {{$item.StepID}} · attempt {{$item.Attempt}}</dd>
+    <dt>participant</dt><dd>{{$item.Participant}}</dd>
+    <dt>raised for</dt><dd>{{$item.Initiator}}{{if $item.MandateRef}} under {{$item.MandateRef}}{{end}}</dd>
+    {{if $item.Scope}}<dt>scope</dt><dd>{{$item.Scope}}</dd>{{end}}
+    <dt>waiting</dt><dd>{{since $item.WaitingSince}}</dd>
+  </dl>
+
+  {{if $item.Facts}}
+  <p>what is being approved: {{range $k, $v := $item.Facts}}<span class="tag">{{$k}} = {{$v}}</span> {{end}}</p>
+  {{end}}
+
+  {{range $req := $item.Outstanding}}
+  <div style="margin-top:.9rem">
+    <strong>{{$req.RequirementID}}</strong>
+    <span class="tag">{{$req.Gate}}</span>
+    <span class="tag">{{$req.Phase}}</span><br>
+    <span class="dim">{{$req.Detail}}</span><br>
+    <span class="warn">{{$req.Reason}}</span>
+    {{range $req.Answers}}<br><span class="dim">already answered: {{.Actor}} — {{.Verdict}}{{if .Roles}} as {{join .Roles ", "}}{{end}}{{if .Reason}}: {{.Reason}}{{end}}</span>{{end}}
+
+    {{if $req.Human}}
+      {{if $readonly}}
+        <p class="dim">This console is read-only.</p>
+      {{else if not $who}}
+        <p class="dim">No authenticated identity on this request, so there is nobody to record an approval as.</p>
+      {{else if eq $who $item.Initiator}}
+        <p class="bad">You are the principal this saga was raised for. A gate requiring separation of
+        duty refuses a self-approval, and records the attempt as a finding rather than waiting past it.</p>
+      {{else}}
+      <form class="inline" method="post" action="/queue/answer"
+            {{if $req.StepUp}}data-stepup="1"{{end}}>
+        <input type="hidden" name="saga_id" value="{{$item.SagaID}}">
+        <input type="hidden" name="step_id" value="{{$item.StepID}}">
+        <input type="hidden" name="requirement_id" value="{{$req.RequirementID}}">
+        <input type="hidden" name="step_up" value="">
+        <input type="text" name="reason" placeholder="reason — recorded with the answer" size="42">
+        <button class="primary" type="submit" name="verdict" value="approve">approve as {{$who}}</button>
+        <button class="danger" type="submit" name="verdict" value="refuse">refuse</button>
+      </form>
+      {{if $req.StepUp}}
+      <p class="dim">This gate requires a step-up: your authenticator signs a challenge derived from
+      <em>this</em> approval, so the proof cannot be replayed against another one. Both buttons ask for
+      it — a refusal recorded without one fails the gate for the wrong reason.</p>
+      {{end}}
+      {{end}}
+    {{else}}
+      <p class="dim">Answered by the participants it names, under their own identities — not from here.</p>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+<script src="/static/stepup.js" defer></script>
+{{template "foot" .}}{{end}}

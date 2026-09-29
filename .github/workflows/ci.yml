@@ -1,0 +1,345 @@
+name: ci
+
+# Manual only. This account has no Actions credits, so every automatic run is a
+# job that queues, fails on billing in five seconds, and tells nobody anything —
+# while `scripts/local-ci.sh` runs these same jobs, in the same order, on Linux,
+# in a container, against the working tree including the uncommitted part.
+#
+# This file is still the definition of green and is kept correct: local-ci.sh is
+# a step-for-step transcription of it, and where the two differ the difference is
+# commented there. Turning the triggers off rather than deleting the file is the
+# point — a deleted workflow would make the local script the definition, and a
+# definition nobody can read against the thing it mirrors drifts.
+#
+# To run it anyway: `gh workflow run ci.yml --ref <branch>`, on an account with
+# credits.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build, vet, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l cmd pkg)
+          if [ -n "$out" ]; then
+            echo "these files need gofmt:"; echo "$out"; exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      - name: build
+        run: make build
+
+      - name: test
+        run: go test -race ./...
+
+  storage:
+    name: object storage and WORM tier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The same compose stack a developer runs, rather than a service
+      # container. Two reasons: GitHub service containers cannot override a
+      # command, and MinIO needs `server <dir>` to run in the erasure-coded mode
+      # that supports versioning — without which Object Lock is unavailable and
+      # CreateBucket answers 501 NotImplemented. Sharing the compose file also
+      # means CI and a laptop cannot drift apart.
+      - name: start object storage
+        run: docker compose up -d minio minio-init
+
+      - name: wait for object storage
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              echo "minio is live"; exit 0
+            fi
+            sleep 1
+          done
+          echo "minio did not become healthy"; docker compose logs minio; exit 1
+
+      # JANUS_S3_REQUIRED turns "cannot reach object storage" from a skip into a
+      # failure. Without it a broken container would look like a clean run while
+      # the WORM tier went entirely untested.
+      - name: storage tests
+        env:
+          JANUS_S3_ENDPOINT: http://127.0.0.1:9000
+          JANUS_S3_ACCESS_KEY: janus
+          JANUS_S3_SECRET_KEY: januspassword
+          JANUS_S3_REQUIRED: "1"
+        run: go test ./pkg/evidence/cas/... ./pkg/evidence/worm/... ./pkg/evidence/objstore/... ./pkg/evidence/fence/... -count=1 -v
+
+      - name: object storage logs
+        if: failure()
+        run: docker compose logs minio minio-init
+
+      - name: stop object storage
+        if: always()
+        run: docker compose down -v
+
+  projection:
+    name: relational projections
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The same compose stack a developer runs, for the same reason the storage
+      # job uses it: CI and a laptop must not be able to drift apart about what
+      # database the projection was checked against.
+      - name: start postgres
+        run: docker compose up -d postgres
+
+      - name: wait for postgres
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose exec -T postgres pg_isready -U janus -d janus >/dev/null 2>&1; then
+              echo "postgres is ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not become healthy"; docker compose logs postgres; exit 1
+
+      # JANUS_PG_REQUIRED turns "no database" from a skip into a failure. These
+      # tests back a frontier gate, so a run that silently skipped them would
+      # report green on a safety property nobody checked.
+      - name: projection tests
+        env:
+          JANUS_PG_DSN: postgres://janus:janus@127.0.0.1:5432/janus
+          JANUS_PG_REQUIRED: "1"
+        # pkg/orchd is here as well as in the build job because the tests that
+        # exercise the daemon's projection wiring skip without a database, and
+        # the build job has none.
+        run: go test ./pkg/projection/... ./pkg/orchd/... ./pkg/console/... ./cmd/janus-projection/... -race -count=1 -v
+
+      - name: postgres logs
+        if: failure()
+        run: docker compose logs postgres
+
+      - name: stop postgres
+        if: always()
+        run: docker compose down -v
+
+  golangci-lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # v8 of the action is the one that speaks golangci-lint v2, which is the
+      # schema .golangci.yml is written in. The version is pinned rather than
+      # "latest" so a lint release cannot fail an unrelated commit.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+
+  proto:
+    name: protobuf codegen is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # buf breaking compares against master, so the history has to be there.
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - run: buf lint
+      # The wire format is the other half of "old sagas replay forever":
+      # a renumbered or retyped field makes every log ever written
+      # decode into different values, silently, and no semantics version can
+      # recover from that. buf.yaml declared `breaking: FILE` from the start and
+      # nothing ran it.
+      # On pull requests only: comparing master against itself proves nothing,
+      # and a push to master is too late to refuse the change anyway. The
+      # observed signal for this check is scripts/local-ci.sh, where it has been
+      # watched to fail on a renumbered field; this step is the same check where
+      # Actions runs.
+      - name: buf breaking
+        if: github.event_name == 'pull_request'
+        run: buf breaking --against '.git#ref=origin/master'
+      # Generated code is committed so the repository builds without buf. This
+      # check exists because committed generated code that has drifted from its
+      # source is worse than none: it compiles, so nothing complains.
+      - name: regenerate and diff
+        run: |
+          buf generate
+          if ! git diff --exit-code -- gen/ sdk/python/janus/v1/; then
+            echo "generated code is out of date — run 'make gen' and commit the result"; exit 1
+          fi
+
+  python:
+    name: python sdk
+    runs-on: ubuntu-latest
+    # Pinned by digest, not by tag, for the same reason the reproducible build
+    # pins the verifier's toolchain: a tag resolves to a different image over time, and a
+    # check whose tools move underneath it answers differently on a commit that
+    # changed nothing.
+    container:
+      image: python@sha256:09f7da3bc104798d0afb40bc08d23ab2da20a76130cec1f2ef170848f5d85217
+    steps:
+      - uses: actions/checkout@v4
+      - name: ruff, mypy and pytest
+        working-directory: sdk/python
+        run: |
+          pip install --quiet --disable-pip-version-check --root-user-action=ignore -r requirements-dev.txt
+          ruff check .
+          mypy janus
+          python -m pytest -q -ra
+
+  govulncheck:
+    name: no known vulnerability is reachable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Pinned. An unpinned scanner is a moving definition of green: the same
+      # tree passes today and fails tomorrow for reasons no commit here caused,
+      # and a job nobody can reproduce is a job people learn to ignore.
+      # go.mod, the reproducible build's image digest and local-ci's image
+      # digest are three pins of one toolchain, and a drift is silent in the
+      # direction that matters: bump go.mod alone and this job goes green while
+      # the published verifier still carries the vulnerable standard library.
+      - name: the three toolchain pins agree
+        run: ./scripts/check-toolchain-pins.sh
+
+      - name: install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+
+      # Source mode, over everything. Reachability-filtered, so this reports
+      # what the code can actually call rather than what it merely links.
+      - name: source
+        run: govulncheck ./...
+
+      # Binary mode, over the one artifact handed to somebody outside this
+      # project. It reads the linked symbol table rather than the source, which
+      # is what an auditor holding only the binary can run -- and running the
+      # same check here is how this repository finds out before they do.
+      - name: the published verifier
+        run: |
+          make build
+          govulncheck -mode=binary bin/janus-verify
+
+  repro:
+    name: janus-verify is reproducible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # The reproducibility check builds from a tarball copy with no .git in
+        # it, so a shallow clone is fine, but it does need the tree intact.
+      # No setup-go step: the toolchain the verifier is built with is pinned by
+      # image digest inside the script, and letting the runner's Go anywhere near
+      # it would defeat the pin.
+      # This also generates and checks the bill of materials: from the
+      # built binary rather than from go.mod, twice, required to be identical,
+      # and required to list exactly the modules `go version -m` finds in that
+      # binary. python3 is used to strip the one CycloneDX field that describes
+      # when the document was made; ubuntu-latest has it.
+      - name: build three ways, require identical bytes, and the same of the SBOM
+        run: ./scripts/reproducible-build.sh check
+
+  gate:
+    name: phase 0 exit gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make build
+
+      # The walking skeleton: run a saga, replay it, export a bundle, verify it
+      # offline, and confirm a one-byte edit is rejected. This is the Phase 0
+      # exit criterion, so it gates every commit rather than being run by hand.
+      - name: walking skeleton
+        run: ./bin/janus-skeleton
+
+      # Criterion S2: every saga history ever recorded still replays to the
+      # projection it produced. A semantic change shows up here as a diff
+      # against recorded history rather than as a silent behaviour shift.
+      - name: replay corpus
+        run: make corpus
+
+      # The fixtures must match the builders that generate them, so a shape the
+      # corpus claims to cover cannot quietly go missing.
+      - name: corpus is current
+        run: |
+          make corpus-update >/dev/null
+          if ! git diff --exit-code -- pkg/saga/testdata/; then
+            echo "the corpus on disk does not match what the builders produce;"
+            echo "run 'make corpus-update' and commit the result"
+            exit 1
+          fi
+
+      # The gate policy a saga is admitted under has to compile before anything
+      # runs on it. A typo in an expression is a policy that refuses every step
+      # it matches, so catching it here beats catching it at a gate.
+      - name: gate policy compiles
+        run: make policy
+
+      - name: MCP interception spike
+        run: make spike-mcp
+
+      # The registry half of the Phase 3 exit gate: register, evaluate,
+      # activate, pin by a real tool call through janus-mcpd, change the
+      # manifest, and require the revalidation to fire. It runs on every commit
+      # because the thing it protects — an effect class nobody checked — is a
+      # regression that would look like a passing build.
+      - name: registry round-trip
+        run: make registry
+
+      # A short soak on every commit: real SIGKILLs, recovery, and full
+      # verification after each one. The 72-hour run that the Phase 1 gate calls
+      # for lives in the nightly workflow.
+      - name: chaos soak (short)
+        run: ./bin/janus-soak -duration 25s -sync data -segment-bytes 32768 -min-life 200ms -max-life 1500ms
+
+      # The Phase 2 exit gate: a real SIGKILL after every single transition of
+      # every scenario, and the resumed saga must reach the same outcome as the
+      # uninterrupted run. Where the soak above asks whether the log survives a
+      # crash, this asks whether the transaction does.
+      #
+      # It also carries the adversarial half of the Phase 3 gate: a
+      # prompt-injected rogue step whose payment must never leave, and a
+      # re-derivation of every gate decision in every log after every kill.
+      - name: saga chaos suite
+        run: make sagachaos
+
+      # Informational: the throughput number depends on the runner's disk, so it
+      # is reported rather than asserted. The gate decision lives in
+      # docs/bench/README.md, measured against known hardware.
+      - name: evidence append benchmark
+        run: ./bin/janus-bench -events 50000 -payload 256 -sweep 64,256 -sync full

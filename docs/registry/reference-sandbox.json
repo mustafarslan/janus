@@ -1,0 +1,12 @@
+{
+  "name": "payments-sandbox/reference",
+  "actions": {
+    "balance.read": {},
+    "payments.hold": {"deltas": {"held_minor": 25000}},
+    "payments.release": {"deltas": {"held_minor": -25000}},
+    "payments.wire": {"deltas": {"settled_minor": 25000}},
+    "payments.refund": {"deltas": {"settled_minor": -25000}},
+    "payments.wire.large": {"deltas": {"settled_minor": 5000000}},
+    "notify.email": {"deltas": {"emails_sent": 1}}
+  }
+}

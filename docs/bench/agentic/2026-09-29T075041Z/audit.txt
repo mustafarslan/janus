@@ -1,0 +1,3 @@
+gate audit: 112 verdicts across 50 sagas re-derived from the log
+  186 answers and results carry a participant's signature that verifies against the key its manifest declares
+  every recorded verdict follows from the inputs recorded with it

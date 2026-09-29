@@ -1,0 +1,116 @@
+{
+  "name": "05-irreversible-quarantine",
+  "description": "an irreversible effect escaped and the saga then failed, so nothing can undo it",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "wire",
+            "effect_class": "EFFECT_CLASS_IRREVERSIBLE_GATED"
+          }
+        ],
+        "gate_policy_version": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "gate_plan": [
+          {
+            "step_id": "wire",
+            "rule_id": "wires",
+            "require": [
+              {
+                "id": "approval",
+                "gate": "GATE_TYPE_POLICY",
+                "phase": "GATE_PHASE_PRE_RELEASE",
+                "policy": {
+                  "expr": "approved == true",
+                  "description": "a wire needs an approval on the record"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "facts": [
+          {
+            "key": "approved",
+            "flag": true
+          }
+        ]
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_COMPOSITE",
+        "verdict": "VERDICT_PASS",
+        "decided": [
+          "approval"
+        ],
+        "facts": [
+          {
+            "key": "approved",
+            "flag": true
+          }
+        ]
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "COMPENSATE",
+      "payload": {
+        "saga_id": "sg"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "QUARANTINE",
+    "last_seq": 5,
+    "event_count": 5,
+    "quarantine_reason": "cannot be undone: [wire] released irreversible effects",
+    "outstanding": [
+      "wire"
+    ],
+    "gate_policy": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "wire",
+        "status": "SEALED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "IMPOSSIBLE",
+        "gates": [
+          "approval@PRE_RELEASE"
+        ],
+        "gate": "PASS via COMPOSITE",
+        "facts": [
+          "approved=true"
+        ]
+      }
+    ]
+  }
+}

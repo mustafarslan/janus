@@ -1,0 +1,164 @@
+{
+  "name": "20-relative-threshold-on-a-published-fact",
+  "description": "a payment is judged against a fraction of a balance another step went and read, which the paying step never gets to state",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "intent": {
+          "intent_id": "in",
+          "principal": "bob"
+        },
+        "plan": [
+          {
+            "step_id": "balance",
+            "effect_class": "EFFECT_CLASS_PURE"
+          },
+          {
+            "step_id": "wire",
+            "effect_class": "EFFECT_CLASS_IRREVERSIBLE_GATED",
+            "depends_on": [
+              "balance"
+            ]
+          }
+        ],
+        "gate_policy_version": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "gate_plan": [
+          {
+            "step_id": "wire",
+            "rule_id": "wires",
+            "require": [
+              {
+                "id": "within-share",
+                "gate": "GATE_TYPE_POLICY",
+                "phase": "GATE_PHASE_PRE_RELEASE",
+                "policy": {
+                  "expr": "amount_minor \u003c= 10 percent of result.balance.available_minor",
+                  "description": "a single payment may not exceed a tenth of the balance"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "balance"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "balance",
+        "outcome": {
+          "status": "STATUS_OK"
+        },
+        "facts": [
+          {
+            "key": "available_minor",
+            "number": "10000000"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "250000"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_COMPOSITE",
+        "verdict": "VERDICT_PASS",
+        "decided": [
+          "within-share"
+        ],
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "250000"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 7,
+      "kind": "SEAL_REQUEST",
+      "payload": {
+        "saga_id": "sg"
+      }
+    },
+    {
+      "seq": 8,
+      "kind": "COMMIT",
+      "payload": {
+        "saga_id": "sg"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMMITTED",
+    "intent_id": "in",
+    "last_seq": 8,
+    "event_count": 8,
+    "gate_policy": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "balance",
+        "status": "COMMITTED",
+        "attempt": 1,
+        "outcome": "OK",
+        "published": [
+          "available_minor=10000000"
+        ]
+      },
+      {
+        "id": "wire",
+        "status": "COMMITTED",
+        "attempt": 1,
+        "outcome": "OK",
+        "gates": [
+          "within-share@PRE_RELEASE"
+        ],
+        "gate": "PASS via COMPOSITE",
+        "facts": [
+          "amount_minor=250000"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,167 @@
+syntax = "proto3";
+
+package janus.v1;
+
+option go_package = "github.com/mustafarslan/janus/gen/go/janus/v1;janusv1";
+
+// EffectClass classifies what a step does to the world outside Janus.
+// The class determines gating: PURE is evidenced only,
+// REVERSIBLE/COMPENSABLE may execute optimistically, IRREVERSIBLE_GATED is held
+// in the outbox until the saga is COMMITTED.
+enum EffectClass {
+  EFFECT_CLASS_UNSPECIFIED = 0;
+  EFFECT_CLASS_PURE = 1;
+  EFFECT_CLASS_REVERSIBLE = 2;
+  EFFECT_CLASS_COMPENSABLE = 3;
+  EFFECT_CLASS_IRREVERSIBLE_GATED = 4;
+  EFFECT_CLASS_IRREVERSIBLE_IMMEDIATE = 5;
+}
+
+// SagaState is the saga lifecycle. QUARANTINE is terminal-until-human:
+// when automated compensation fails Janus freezes rather than guessing.
+enum SagaState {
+  SAGA_STATE_UNSPECIFIED = 0;
+  SAGA_STATE_CREATED = 1;
+  SAGA_STATE_RUNNING = 2;
+  SAGA_STATE_GATED = 3;
+  SAGA_STATE_SEALING = 4;
+  SAGA_STATE_COMMITTED = 5;
+  SAGA_STATE_COMPENSATING = 6;
+  SAGA_STATE_COMPENSATED = 7;
+  SAGA_STATE_QUARANTINE = 8;
+}
+
+enum StepState {
+  STEP_STATE_UNSPECIFIED = 0;
+  STEP_STATE_PLANNED = 1;
+  STEP_STATE_PREPARED = 2;
+  STEP_STATE_GATED = 3;
+  STEP_STATE_SEALED = 4;
+  STEP_STATE_COMMITTED = 5;
+  STEP_STATE_FAILED = 6;
+  STEP_STATE_COMPENSATED = 7;
+  // REFUSED means the step ran but a gate would not let its effect through.
+  // It is distinct from FAILED because the step itself succeeded, and the
+  // distinction decides whether there is anything left to undo.
+  STEP_STATE_REFUSED = 8;
+}
+
+// ChildCommitMode says what a sub-saga's commit depends on.
+//
+// It is declared when the child is spawned, not discovered when the parent
+// fails. A parent that delegates work to another agent is making a promise
+// about what it can still take back, and that promise has to be admissible
+// before any effect happens rather than negotiated afterwards.
+enum ChildCommitMode {
+  CHILD_COMMIT_MODE_UNSPECIFIED = 0;
+  // CASCADE binds the child to the parent: the child's held effects are
+  // released only when the parent commits, and a parent that unwinds unwinds
+  // the child with it. The child is part of the parent's transaction.
+  CHILD_COMMIT_MODE_CASCADE = 1;
+  // AUTONOMOUS lets the child commit on its own authority. A parent that
+  // unwinds afterwards cannot take the child back, so the parent's spawning
+  // step has to declare its own compensation or admit it is irreversible.
+  CHILD_COMMIT_MODE_AUTONOMOUS = 2;
+}
+
+enum GateType {
+  GATE_TYPE_UNSPECIFIED = 0;
+  GATE_TYPE_SCHEMA = 1;
+  GATE_TYPE_POLICY = 2;
+  GATE_TYPE_VALIDATOR = 3;
+  GATE_TYPE_FRONTIER = 4;
+  GATE_TYPE_HUMAN = 5;
+  GATE_TYPE_RISK_LIMIT = 6;
+  // COMPOSITE is the decision over a step's whole requirement list rather than
+  // any single check. It is what the state machine acts on; the individual
+  // verdicts that produced it are carried in the DPR the composite cites.
+  GATE_TYPE_COMPOSITE = 7;
+}
+
+enum Verdict {
+  VERDICT_UNSPECIFIED = 0;
+  VERDICT_PASS = 1;
+  VERDICT_FAIL = 2;
+  VERDICT_ESCALATE = 3;
+}
+
+enum ParticipantKind {
+  PARTICIPANT_KIND_UNSPECIFIED = 0;
+  PARTICIPANT_KIND_AGENT = 1;
+  PARTICIPANT_KIND_TOOL = 2;
+  PARTICIPANT_KIND_SYSTEM = 3;
+  PARTICIPANT_KIND_HUMAN = 4;
+  PARTICIPANT_KIND_VALIDATOR = 5;
+}
+
+// ParticipantRef pins a participant to an exact manifest version. Every step
+// records this so replay can resolve the same capability declaration (I8).
+message ParticipantRef {
+  string id = 1;
+  string manifest_version = 2;
+  string principal = 3;
+  ParticipantKind kind = 4;
+}
+
+// Intent is the authorized purpose a saga roots in — the top of every "why"
+// chain.
+message Intent {
+  string intent_id = 1;
+  string principal = 2;
+  string originator = 3;
+  string mandate_ref = 4;
+  string scope = 5;
+  int64 expires_at_unix_nanos = 6;
+  map<string, string> constraints = 7;
+}
+
+// ResourceTouch records that a step read or wrote a resource. The set of
+// touches drives per-resource frontier tracking for commit safety (I6).
+message ResourceTouch {
+  string resource_id = 1;
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_READ = 1;
+    MODE_WRITE = 2;
+  }
+  Mode mode = 2;
+  uint64 frontier_seq = 3;
+}
+
+message Outcome {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_OK = 1;
+    STATUS_RETRYABLE_ERROR = 2;
+    STATUS_TERMINAL_ERROR = 3;
+    STATUS_TIMEOUT = 4;
+  }
+  Status status = 1;
+  string code = 2;
+  string message = 3;
+}
+
+// ParticipantSignature is a participant's own signature over what it asked
+// Janus to record on its behalf.
+//
+// The daemon checks it against the keys the participant's registered manifest
+// declares (identity.public_keys), and the record keeps it, so whether a
+// validator really gave an answer -- or a payment step really reported its
+// result -- is checkable from the log by somebody who trusts neither the daemon
+// nor the network it listened on. What is signed is a canonical encoding of the
+// message defined in pkg/callersig and, identically, in the Python SDK; not the
+// protobuf wire bytes, which two languages need not produce alike.
+message ParticipantSignature {
+  // participant_id is who is signing: the participant the message is on
+  // behalf of, or, for a human's answer, the participant relaying it.
+  string participant_id = 1;
+  // public_key is the signing key, as "ed25519:<hex>" -- one of the keys the
+  // participant's manifest declares.
+  string public_key = 2;
+  bytes signature = 3;
+}
+
+message Actor {
+  ParticipantRef participant = 1;
+  string human_subject = 2;
+}

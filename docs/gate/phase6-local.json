@@ -1,0 +1,28 @@
+{
+  "measured_at": "2026-08-31T16:10:22.569774+00:00",
+  "what_this_is": "The LOCAL EQUIVALENT of the Phase 6 exit gate, not the gate. The gate asks for a load test at 10x a design partner's peak, a region-failover game day, and replay sampling in a design partner's production. There is no design partner and no second region.",
+  "legs": {
+    "load_test": {
+      "is": "a load test at a stated reference scale",
+      "is_not": "10x a design partner's peak",
+      "concurrency": 64,
+      "background_sagas": 2000,
+      "samples": 300,
+      "detail": "docs/bench/README.md, section 'Where the remaining 25 ms actually is'"
+    },
+    "failover_drill": {
+      "is": "two processes on one host, primary SIGKILLed",
+      "is_not": "a region failover; the disk survives the kill",
+      "detail": "docs/bench/phase6-failover.json",
+      "rto_ms": 159,
+      "rpo_violations": 0
+    },
+    "replay_sampling": {
+      "is": "a rate over this repository's chaos corpus",
+      "is_not": "sampling in a design partner's production",
+      "detail": "docs/bench/README.md, spot-replay"
+    }
+  },
+  "legs_passed": 3,
+  "legs_failed": 0
+}

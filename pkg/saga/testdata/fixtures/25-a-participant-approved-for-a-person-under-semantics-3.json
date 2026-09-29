@@ -1,0 +1,201 @@
+{
+  "name": "25-a-participant-approved-for-a-person-under-semantics-3",
+  "description": "a wire's person approval before it runs is answered by a participant in its own name, claiming the role, and the saga commits. Legal under semantics 3, refused under 4; kept so a version-3 log holding it folds as it did",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "intent": {
+          "intent_id": "in",
+          "principal": "bob",
+          "mandate_ref": "m-1"
+        },
+        "plan": [
+          {
+            "step_id": "wire",
+            "effect_class": "EFFECT_CLASS_IRREVERSIBLE_GATED"
+          }
+        ],
+        "gate_policy_version": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "gate_plan": [
+          {
+            "step_id": "wire",
+            "rule_id": "wires",
+            "require": [
+              {
+                "id": "pre-approval",
+                "gate": "GATE_TYPE_HUMAN",
+                "phase": "GATE_PHASE_PRE_EXECUTION",
+                "human": {
+                  "roles": [
+                    "credit-officer"
+                  ],
+                  "quorum": 1
+                }
+              },
+              {
+                "id": "wire-limit",
+                "gate": "GATE_TYPE_RISK_LIMIT",
+                "phase": "GATE_PHASE_PRE_RELEASE",
+                "risk_limit": {
+                  "thresholds": [
+                    {
+                      "fact": "amount_minor",
+                      "max": "1000000"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "semantics_version": 3
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_HUMAN",
+        "verdict": "VERDICT_ESCALATE",
+        "reason": "waiting for approval from an approver holding one of credit-officer",
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "100"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "GATE_ANSWER",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "requirement_id": "pre-approval",
+        "attempt": 1,
+        "actor": {
+          "participant": {
+            "id": "ag_intake"
+          }
+        },
+        "verdict": "VERDICT_PASS",
+        "reason": "approved",
+        "roles": [
+          "credit-officer"
+        ]
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_COMPOSITE",
+        "verdict": "VERDICT_PASS",
+        "decided": [
+          "pre-approval"
+        ],
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "100"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "100"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 7,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_COMPOSITE",
+        "verdict": "VERDICT_PASS",
+        "decided": [
+          "wire-limit"
+        ],
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "100"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 8,
+      "kind": "SEAL_REQUEST",
+      "payload": {
+        "saga_id": "sg"
+      }
+    },
+    {
+      "seq": 9,
+      "kind": "COMMIT",
+      "payload": {
+        "saga_id": "sg"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMMITTED",
+    "intent_id": "in",
+    "last_seq": 9,
+    "event_count": 9,
+    "gate_policy": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "semantics": 3,
+    "steps": [
+      {
+        "id": "wire",
+        "status": "COMMITTED",
+        "attempt": 1,
+        "outcome": "OK",
+        "gates": [
+          "pre-approval@PRE_EXECUTION",
+          "wire-limit@PRE_RELEASE"
+        ],
+        "gate": "PASS via COMPOSITE",
+        "facts": [
+          "amount_minor=100"
+        ],
+        "proposal": "attempt 1: amount_minor=100",
+        "answers": [
+          "pre-approval@1 ag_intake=PASS"
+        ]
+      }
+    ]
+  }
+}

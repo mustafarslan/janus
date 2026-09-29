@@ -1,0 +1,225 @@
+{
+  "name": "03-chain-compensated",
+  "description": "a three-step chain undone in reverse topological order",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "pay",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "compensation_action": "pay.undo"
+          },
+          {
+            "step_id": "book",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "depends_on": [
+              "pay"
+            ],
+            "compensation_action": "book.undo"
+          },
+          {
+            "step_id": "notify",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "depends_on": [
+              "book"
+            ],
+            "compensation_action": "notify.undo"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book"
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 7,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 8,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "notify"
+      }
+    },
+    {
+      "seq": 9,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "notify",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 10,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "notify",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 11,
+      "kind": "COMPENSATE",
+      "payload": {
+        "saga_id": "sg",
+        "reason_ref": "customer withdrew"
+      }
+    },
+    {
+      "seq": 12,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "notify~undo",
+        "compensates": "notify"
+      }
+    },
+    {
+      "seq": 13,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "notify~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 14,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book~undo",
+        "compensates": "book"
+      }
+    },
+    {
+      "seq": 15,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 16,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay~undo",
+        "compensates": "pay"
+      }
+    },
+    {
+      "seq": 17,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMPENSATED",
+    "last_seq": 17,
+    "event_count": 17,
+    "abort_reason": "customer withdrew",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "pay",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "pay~undo",
+        "gate": "PASS via UNSPECIFIED"
+      },
+      {
+        "id": "book",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "book~undo",
+        "gate": "PASS via UNSPECIFIED"
+      },
+      {
+        "id": "notify",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "notify~undo",
+        "gate": "PASS via UNSPECIFIED"
+      }
+    ]
+  }
+}

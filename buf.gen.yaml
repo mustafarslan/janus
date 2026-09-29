@@ -1,0 +1,24 @@
+version: v2
+managed:
+  enabled: false
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.36.11
+    out: gen/go
+    opt:
+      - paths=source_relative
+  # Pinned for the same reason protoc-gen-go is: an unpinned remote
+  # plugin moves under you, the generated header changes, and the
+  # regenerate-and-diff job fails on a commit that touched no proto.
+  - remote: buf.build/grpc/go:v1.5.1
+    out: gen/go
+    opt:
+      - paths=source_relative
+  # The Python SDK's wire types. They land at sdk/python/janus/v1/, which is not
+  # a stylistic choice: generated protobuf Python imports its siblings as
+  # `from janus.v1 import common_pb2`, so the SDK package has to *be* `janus`
+  # with `v1` inside it or every generated import breaks. Pinned for the same
+  # reason the Go plugins are.
+  - remote: buf.build/protocolbuffers/python:v31.1
+    out: sdk/python
+  - remote: buf.build/grpc/python:v1.71.0
+    out: sdk/python

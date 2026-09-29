@@ -1,0 +1,164 @@
+{
+  "name": "16-both-phases-then-commit",
+  "description": "an irreversible effect is judged before it runs and again before release, on the same facts both times, and only then commits",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "wire",
+            "effect_class": "EFFECT_CLASS_IRREVERSIBLE_GATED"
+          }
+        ],
+        "gate_policy_version": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "gate_plan": [
+          {
+            "step_id": "wire",
+            "rule_id": "wires",
+            "require": [
+              {
+                "id": "approval",
+                "gate": "GATE_TYPE_POLICY",
+                "phase": "GATE_PHASE_PRE_EXECUTION",
+                "policy": {
+                  "expr": "approved == true",
+                  "description": "a wire needs an approval on the record"
+                }
+              },
+              {
+                "id": "wire-limit",
+                "gate": "GATE_TYPE_RISK_LIMIT",
+                "phase": "GATE_PHASE_PRE_RELEASE",
+                "risk_limit": {
+                  "thresholds": [
+                    {
+                      "fact": "amount_minor",
+                      "max": "1000000"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_COMPOSITE",
+        "verdict": "VERDICT_PASS",
+        "decided": [
+          "approval"
+        ],
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "250000"
+          },
+          {
+            "key": "approved",
+            "flag": true
+          }
+        ]
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "250000"
+          },
+          {
+            "key": "approved",
+            "flag": true
+          }
+        ]
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_COMPOSITE",
+        "verdict": "VERDICT_PASS",
+        "decided": [
+          "wire-limit"
+        ],
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "250000"
+          },
+          {
+            "key": "approved",
+            "flag": true
+          }
+        ]
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "SEAL_REQUEST",
+      "payload": {
+        "saga_id": "sg"
+      }
+    },
+    {
+      "seq": 7,
+      "kind": "COMMIT",
+      "payload": {
+        "saga_id": "sg"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMMITTED",
+    "last_seq": 7,
+    "event_count": 7,
+    "gate_policy": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "wire",
+        "status": "COMMITTED",
+        "attempt": 1,
+        "outcome": "OK",
+        "gates": [
+          "approval@PRE_EXECUTION",
+          "wire-limit@PRE_RELEASE"
+        ],
+        "gate": "PASS via COMPOSITE",
+        "facts": [
+          "amount_minor=250000",
+          "approved=true"
+        ]
+      }
+    ]
+  }
+}

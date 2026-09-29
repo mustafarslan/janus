@@ -1,0 +1,37 @@
+{{define "quarantine.html"}}{{template "head" .}}
+{{$board := .Data}}{{$q := .Data.Items}}
+<h1>frozen, waiting for a person</h1>
+<p class="lede">
+  An effect here has exhausted its delivery attempts and Janus has stopped trying. It is
+  frozen rather than dropped and rather than retried forever, and it is listed across every
+  saga because the saga that produced it is usually <span class="tag">COMMITTED</span> —
+  nothing drags a saga into quarantine when one of its effects freezes, so there is no saga
+  page anybody would think to open.
+</p>
+<p class="lede dim">
+  There is no button on this page. Releasing a frozen effect is a decision about whether money
+  moves, and it is taken against the log rather than against a list assembled from a
+  projection. Reconcile at the target, using the idempotency key.
+</p>
+
+{{template "asof" $board}}
+{{if not $q}}
+<div class="card">Nothing is frozen.</div>
+{{else}}
+<table>
+  <tr><th>effect</th><th>target</th><th>saga</th><th>attempts</th><th>why</th><th>held since</th></tr>
+  {{range $q}}
+  <tr>
+    <td>{{.EffectID}}{{if .IdemKey}}<br><span class="dim">idem {{.IdemKey}}</span>{{end}}</td>
+    <td>{{.Target}}{{if .Action}}<br><span class="dim">{{.Action}}</span>{{end}}</td>
+    <td><a href="/sagas/{{.SagaID}}">{{.SagaID}}</a>{{if .StepID}} · {{.StepID}}{{end}}
+      {{if .SagaStatus}}<br><span class="tag {{if eq .SagaStatus "QUARANTINE"}}bad{{else if eq .SagaStatus "COMMITTED"}}ok{{end}}">{{.SagaStatus}}</span>{{end}}
+      {{if .Principal}}<span class="dim">for {{.Principal}}</span>{{end}}</td>
+    <td class="num">{{.Attempts}}{{if .MayHaveLanded}}<br><span class="warn">may have landed</span>{{end}}</td>
+    <td><span class="bad">{{.Reason}}</span>{{if .LastError}}<br><span class="dim">{{.LastError}}</span>{{end}}</td>
+    <td>{{since .HeldSince}}</td>
+  </tr>
+  {{end}}
+</table>
+{{end}}
+{{template "foot" .}}{{end}}

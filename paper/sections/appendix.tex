@@ -1,0 +1,65 @@
+\section{Prompts}
+\label{app:prompts}
+\emph{Intake} (both conditions):
+\begin{lstlisting}
+You read consumer loan applications for a bank. Extract the application as JSON with exactly these keys: "applicant" (string, the applicant's name, or null), "account" (string, or null), "amount_minor" (integer, the requested amount in euro cents, or null if the application does not state one clearly), "currency" (ISO code, or null), and "purpose" (string, or null). Reply with JSON only.
+\end{lstlisting}
+\emph{Underwriter}, condition A; condition B omits the second sentence, which
+is also the prompt's only statement that amounts are in euro cents:
+\begin{lstlisting}
+You are an underwriter for consumer loans. Decide whether to recommend approval of the application below. Our lending mandate covers personal loans of up to 5,000 EUR (500000 euro cents) for a stated, legitimate purpose. Reply with JSON only, with keys "approve" (boolean) and "reason" (one sentence).
+\end{lstlisting}
+Condition B$'$ puts in its place: \emph{Amounts in the extracted application are
+in euro cents (100 euro cents = 1 EUR).} The underwriter's user message is the
+intake agent's JSON followed by the original application text.
+% source: examples/loan-desk/agentic/model.py (_MANDATE, _UNIT)
+
+\section{Reproducing the numbers}
+\label{sec:artifact}
+\begin{tabular}{@{}p{3.2cm}p{4.9cm}@{}}
+\toprule
+Result & Command or artifact \\
+\midrule
+crash consistency & \code{make sagachaos}, \code{make sagachaos-hosted} \\
+72-hour soak & \code{DURATION=72h make soak} \\
+failover & \code{make failover} \\
+100M-event verification & \code{janus-bench} \code{-events 100000000} \code{-payload 256} \code{-producers 256} \code{-sync none} \code{-segment-bytes} \code{16777216} \code{-dir} \emph{(60\,GB free)}; report in \code{docs/bench/} \code{phase1-100m.json} \\
+write path, decision path & \code{make bench-linux}, \code{make latency-linux} \\
+adversarial auditor & \code{make evil-auditor} \\
+real-model runs & \code{make loan-desk-agentic}, with \code{JANUS\_CONDITION=B} or \code{Bprime}; runs, logs and public keys in \code{docs/bench/agentic/} \\
+oracle runs & the same, with \code{JANUS\_ORACLE=} \code{always-approve} and \code{JANUS\_REPLAY\_INTAKE=} a run's \code{results.json} \\
+refund run & the same, with \code{JANUS\_AGENTIC\_ONLY=} and \code{JANUS\_FAIL\_NOTIFY=} both set to app\_06 to app\_10 \\
+auditing a run & \code{janus-verify -keys} \code{pub.json evidence} and \code{janus-gate audit evidence}, in the run's directory \\
+signed replication & the oracle run with a key per participant and signatures required (\code{janus-orchd} \code{-require-caller-} \code{signatures}): \code{2026-09-29T075041Z} \\
+pre-registration & see below \\
+integration cost & \code{make loan-desk} \\
+replay corpus & \code{make corpus} \\
+reproducible verifier & \code{make repro} \\
+\bottomrule
+\end{tabular}
+
+\smallskip\noindent\emph{What was registered, and when.} Each run directory
+records the development commit it ran from, and \code{docs/bench/agentic/CONDITIONS.md}
+holds each hypothesis with its predicted counts, in the order they were written.
+The published repository is a snapshot of that development history, not the
+history itself, so what follows is the author's account and cannot be checked
+by a reader. Condition A was designed and run first and was not registered; a
+three-application smoke run and one start aborted after registration preceded
+it. Condition B's hypothesis was written after A's result and committed alone,
+at 14:08:40Z on 2026-09-27, the second its run started; the harness, corpus,
+prompts and validator it ran were committed five minutes later, after the run.
+The refund run's hypothesis was committed with the code it needed, on a clean
+tree, before its run; it used seeds 1000--1004 rather than A's. The hypotheses
+and exact predicted counts of B$'$ and both oracle runs were committed together
+with the harness they ran on at 05:58:38Z on 2026-09-29, and pushed to a hosted
+remote before the runs started at 05:58:49Z (oracle over A), 05:59:23Z (oracle
+over B) and 05:59:47Z (B$'$); the signed replication was registered the same
+way at 07:50:38Z, before its run at 07:50:41Z. All times are the author's clock,
+and no third party timestamped any of these commits. The two oracle runs record
+a clean tree. B$'$'s record says \code{-dirty}, because the paper's own LaTeX
+sources were being edited while it ran; its decision records name the model's
+inputs by hash, and every prompt and application hash matches the published
+\code{model.py} and corpus, which a reader can check. One three-application
+oracle smoke run, which called no model, preceded the registration and is not
+reported as a result.
+% source: docs/bench/agentic/CONDITIONS.md; docs/bench/agentic/*/README.md (commit and start time of each run)

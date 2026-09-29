@@ -1,0 +1,72 @@
+# Local development stack for Janus.
+#
+# Neither service is used by the Phase 0 code paths: the evidence log is a
+# segment directory on local disk and needs nothing else to run or be verified.
+# They are here because Phase 1 puts content-addressed payloads in object
+# storage and Phase 2 puts saga projections in Postgres, and standing them up
+# now keeps that transition from also being an environment change.
+#
+#   make dev       start
+#   make dev-down  stop and delete the volumes
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: janus-postgres
+    environment:
+      POSTGRES_USER: janus
+      POSTGRES_PASSWORD: janus
+      POSTGRES_DB: janus
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U janus -d janus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The S3-compatible object store behind the content-addressed payload blobs
+  # and the Object Lock WORM tier.
+  minio:
+    image: minio/minio:latest
+    container_name: janus-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: janus
+      MINIO_ROOT_PASSWORD: januspassword
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Object Lock can only be turned on when a bucket is created, never
+  # afterwards, so the buckets are made here rather than lazily by the
+  # application. A deployment that forgets this ends up with a WORM tier that
+  # silently is not one.
+  minio-init:
+    image: minio/mc:latest
+    container_name: janus-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set janus http://minio:9000 janus januspassword &&
+      mc mb --ignore-existing --with-lock janus/janus-evidence &&
+      mc mb --ignore-existing janus/janus-cas &&
+      mc ls janus &&
+      echo 'buckets ready: janus-evidence (object lock enabled), janus-cas'
+      "
+    restart: "no"
+
+volumes:
+  postgres-data:
+  minio-data:

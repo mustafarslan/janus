@@ -1,0 +1,54 @@
+\section{Limitations}
+\label{sec:limits}
+
+\begin{itemize}
+\item \textbf{One node, one machine.} Janus has one writer per log; followers,
+  fencing and a measured failover exist, but the performance figures are one
+  host's, the failover drill ran two processes on it, and nothing was measured
+  across regions; the decision path was not measured to completion above
+  concurrency 256. The decision path is marginal against
+  its budget at concurrency 64 and fails at 256 (\cref{sec:eval-latency}); the
+  remaining cost is the projection fold, and we have not closed it.
+\item \textbf{No external baseline.} We did not compare against a durable
+  execution engine~\cite{temporal} or an agent-transaction
+  system~\cite{sagallm,atomix,cordon} under the same faults; the plain twin is
+  the only comparison, and it isolates what Janus adds to one agent rather than
+  ranking Janus against alternatives.
+\item \textbf{The model experiment is small.} One model, fifty applications
+  written by the author, five seeds on ten of them, and three conditions, the
+  second confounded by a missing unit and the third run to remove it
+  (\cref{sec:eval-model}). It
+  shows that the envelope bounds what a real model's decisions release in cases
+  where the model wanted out-of-policy effects; it does not estimate how often a
+  model wants them.
+\item \textbf{Declared, not faithful.} Gates decide on declared facts. A model
+  that misreads or is steered into declaring a smaller amount passes them;
+  Janus records the misreading and bounds its authority, and does not detect it.
+\item \textbf{Cooperative admission on the SDK path.} Effects run by the Python
+  SDK are admitted, not held; only the MCP edge mediates effects on the wire, and
+  the A2A middleware records without gating (\cref{sec:design-edges}). Every
+  real-model result in this paper is on the SDK path.
+\item \textbf{What a signature does not cover.} A participant that declares no
+  key is taken at its word unless the daemon requires signatures; the model's
+  decision record beside a signed result is not covered by the signature; and a
+  declaration's signature does not bind its attempt (\cref{sec:model-out}).
+\item \textbf{What a person sees.} A WebAuthn step-up is bound to the attempt,
+  and through the pin to its proposal, but the person's authenticator is not
+  shown the amount it signs for.
+\item \textbf{Self-reported provenance.} A model's decision record---model,
+  sampling, output hash, grounds---is reported by the agent; the daemon stamps
+  its identity and position, not its truth.
+\item \textbf{Registration.} Condition A was not registered, and condition B's
+  harness was committed after its run. The later runs' hypotheses were committed
+  and pushed before they ran, but the development history is not published and
+  nothing was timestamped by a third party, so the registration is the author's
+  statement; what a reader can check is that the published prompts and corpus
+  hash to what each run recorded (\cref{sec:artifact}).
+\item \textbf{No external anchoring.} A holder of the writer's key can write a
+  consistent alternative history; anchoring log heads outside Janus, or having
+  witnesses cosign them~\cite{cosi}, is designed and not built. A data subject can be erased by destroying the key their payloads
+  are sealed under, but disposing of expired records on an append-only log is not
+  built.
+\item \textbf{Where the soak ran.} The 72-hour soak ran only on darwin/arm64.
+\item \textbf{No users.} Janus has not been deployed by anyone but its author.
+\end{itemize}

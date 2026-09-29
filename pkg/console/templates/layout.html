@@ -1,0 +1,82 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>janus — {{.Title}}</title>
+<style>
+:root { color-scheme: light dark; --line: #8884; --dim: #7a7a7a; --warn: #b26a00; --bad: #b00020; --ok: #1a7f37; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+header { border-bottom: 1px solid var(--line); padding: .8rem 1.2rem; display: flex; gap: 1.2rem; align-items: baseline; flex-wrap: wrap; }
+header a { text-decoration: none; }
+header a.brand { font-weight: 700; }
+header .spacer { flex: 1; }
+header .who { color: var(--dim); font-size: .85em; }
+main { padding: 1.2rem; max-width: 1200px; }
+h1 { font-size: 1.1rem; margin: 0 0 .2rem; }
+h2 { font-size: .95rem; margin: 1.6rem 0 .4rem; }
+p.lede { color: var(--dim); margin: 0 0 1.2rem; max-width: 70ch; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--dim); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+td.num { text-align: right; }
+.tag { display: inline-block; padding: 0 .4em; border: 1px solid var(--line); border-radius: 3px; font-size: .8em; }
+.dim { color: var(--dim); }
+.warn { color: var(--warn); }
+.bad { color: var(--bad); }
+.ok { color: var(--ok); }
+.card { border: 1px solid var(--line); border-radius: 4px; padding: .8rem 1rem; margin-bottom: 1rem; }
+.card h3 { margin: 0 0 .3rem; font-size: .95rem; }
+.notice { border-left: 3px solid var(--ok); padding: .5rem .8rem; margin-bottom: 1rem; background: #1a7f3712; }
+.problem { border-left: 3px solid var(--bad); padding: .5rem .8rem; margin-bottom: 1rem; background: #b0002012; }
+form.inline { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: .6rem; }
+input[type=text], select { font: inherit; padding: .25rem .4rem; border: 1px solid var(--line); border-radius: 3px; background: transparent; color: inherit; }
+button { font: inherit; padding: .25rem .7rem; border: 1px solid var(--line); border-radius: 3px; background: transparent; color: inherit; cursor: pointer; }
+button.primary { border-color: var(--ok); color: var(--ok); }
+button.danger { border-color: var(--bad); color: var(--bad); }
+footer { border-top: 1px solid var(--line); padding: .8rem 1.2rem; color: var(--dim); font-size: .8rem; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: .1rem .8rem; margin: 0; }
+dl.kv dt { color: var(--dim); }
+dl.kv dd { margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/">janus</a>
+  <a href="/">sagas</a>
+  <a href="/queue">queue</a>
+  <a href="/quarantine">quarantine</a>
+  <a href="/search">evidence</a>
+  {{if not .ReadOnly}}<a href="/credentials">authenticators</a>{{end}}
+  <span class="spacer"></span>
+  <span class="who">
+    {{if .ReadOnly}}read-only{{else if .Approver}}signed in as {{.Approver}}{{if .Roles}} ({{join .Roles ", "}}){{end}}{{else}}not authenticated{{end}}
+  </span>
+</header>
+<main>
+{{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+{{if .Error}}<div class="problem">{{.Error}}</div>{{end}}
+{{end}}
+
+{{define "foot"}}
+</main>
+<footer>
+  {{.Dir}} · janus-console {{.Version}} ·
+  everything here is derived from the evidence log on each request; nothing is cached.
+  {{if .ReadOnly}}No identity header is configured, so this console cannot record approvals.{{end}}
+  For a verdict you can hand to an auditor, run <code>janus-verify</code> and <code>janus-gate audit</code>.
+</footer>
+</body>
+</html>
+{{end}}
+
+{{define "asof"}}
+{{if .Projected}}
+<p class="asof" title="This page was built from the projection, which the daemon folds from the log. It is behind by however long ago that last happened.">
+  as of sequence {{.AsOf}} — from the projection, not the log
+</p>
+{{else}}
+<p class="asof">as of sequence {{.AsOf}} — read from the log</p>
+{{end}}
+{{end}}

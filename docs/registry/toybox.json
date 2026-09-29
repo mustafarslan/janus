@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0",
+  "identity": {
+    "participant_id": "tool_toybox",
+    "kind": "TOOL",
+    "principal": "pr_demo",
+    "public_keys": []
+  },
+  "runtime": {
+    "prompt_bundle_hash": "blake3:1111111111111111111111111111111111111111111111111111111111111111",
+    "framework": "none"
+  },
+  "actions": [
+    {
+      "name": "echo",
+      "effect_class": "PURE"
+    },
+    {
+      "name": "wire.send",
+      "effect_class": "IRREVERSIBLE_GATED",
+      "idempotency": {
+        "key_recipe": "account,amount",
+        "window_seconds": 2592000
+      },
+      "limits": {
+        "max_amount": 100000,
+        "amount_field": "amount",
+        "currency": "EUR"
+      }
+    }
+  ],
+  "risk": {
+    "tier": 2,
+    "revalidation_triggers": ["prompt_change", "action_change", "limit_change"]
+  },
+  "jurisdiction": {
+    "deployable_in": ["EU"],
+    "data_residency": "EU"
+  }
+}

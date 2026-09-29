@@ -1,0 +1,36 @@
+{{define "overview.html"}}{{template "head" .}}
+{{$o := .Data}}
+<h1>sagas</h1>
+{{template "asof" .Data}}
+<p class="lede">
+  {{len $o.Sagas}} saga(s).
+  {{if $o.Waiting}}<a href="/queue"><span class="warn">{{$o.Waiting}} step(s) waiting on somebody</span></a>.{{end}}
+  {{if $o.HeldEffects}}{{$o.HeldEffects}} irreversible effect(s) held until commit.{{end}}
+  {{if $o.Quarantined}}<span class="bad">{{$o.Quarantined}} saga(s) quarantined</span> — frozen rather than guessed.{{end}}
+  {{if $o.QuarantinedEffects}}<a href="/quarantine"><span class="bad">{{$o.QuarantinedEffects}} effect(s) frozen</span></a> — undelivered, waiting for a person.{{end}}
+  {{$o.Participants}} registered participant(s).
+</p>
+
+{{if not $o.Sagas}}
+<div class="card">No sagas in this evidence directory yet.</div>
+{{else}}
+<table>
+  <tr><th>saga</th><th>state</th><th>steps</th><th>waiting</th><th>held</th><th>intent</th><th>principal</th><th class="num">seq</th></tr>
+  {{range $o.Sagas}}
+  <tr>
+    <td><a href="/sagas/{{.SagaID}}">{{.SagaID}}</a>{{if .Parent}}<br><span class="dim">sub-saga of {{.Parent}}</span>{{end}}</td>
+    <td>
+      <span class="tag {{if eq .Status "QUARANTINE"}}bad{{else if eq .Status "COMMITTED"}}ok{{end}}">{{.Status}}</span>
+      {{if .Reason}}<br><span class="dim">{{.Reason}}</span>{{end}}
+    </td>
+    <td>{{.Done}}/{{.Steps}} <span class="dim">({{pct .Done .Steps}}%)</span></td>
+    <td>{{if .Waiting}}<span class="warn">{{.Waiting}}</span>{{else}}—{{end}}</td>
+    <td>{{if .Held}}{{.Held}}{{else}}—{{end}}</td>
+    <td class="dim">{{.IntentID}}</td>
+    <td class="dim">{{.Principal}}</td>
+    <td class="num dim">{{.LastSeq}}</td>
+  </tr>
+  {{end}}
+</table>
+{{end}}
+{{template "foot" .}}{{end}}

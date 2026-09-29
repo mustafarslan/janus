@@ -1,0 +1,121 @@
+{
+  "name": "18-self-approval-refused",
+  "description": "the principal the saga was initiated for approves their own payment; four eyes means the gate refuses rather than quietly waiting for somebody else",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "intent": {
+          "intent_id": "in",
+          "principal": "bob",
+          "mandate_ref": "m-1"
+        },
+        "plan": [
+          {
+            "step_id": "wire",
+            "effect_class": "EFFECT_CLASS_IRREVERSIBLE_GATED"
+          }
+        ],
+        "gate_policy_version": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "gate_plan": [
+          {
+            "step_id": "wire",
+            "rule_id": "wires",
+            "require": [
+              {
+                "id": "approval",
+                "gate": "GATE_TYPE_HUMAN",
+                "phase": "GATE_PHASE_PRE_RELEASE",
+                "human": {
+                  "roles": [
+                    "credit-officer"
+                  ],
+                  "quorum": 1,
+                  "separation_of_duty": true
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_ANSWER",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "requirement_id": "approval",
+        "attempt": 1,
+        "actor": {
+          "human_subject": "bob"
+        },
+        "verdict": "VERDICT_PASS",
+        "roles": [
+          "credit-officer"
+        ],
+        "auth_ref": "auth:bob"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "wire",
+        "gate": "GATE_TYPE_HUMAN",
+        "verdict": "VERDICT_FAIL",
+        "reason": "\"bob\" approved a saga initiated on their own authority, and this gate requires the approver not be the initiator",
+        "decided": [
+          "approval"
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMPENSATED",
+    "intent_id": "in",
+    "last_seq": 5,
+    "event_count": 5,
+    "abort_reason": "gate GATE_TYPE_HUMAN refused: \"bob\" approved a saga initiated on their own authority, and this gate requires the approver not be the initiator",
+    "gate_policy": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "wire",
+        "status": "REFUSED",
+        "attempt": 1,
+        "outcome": "OK",
+        "gates": [
+          "approval@PRE_RELEASE"
+        ],
+        "gate": "FAIL via HUMAN",
+        "answers": [
+          "approval@1 bob=PASS"
+        ]
+      }
+    ]
+  }
+}

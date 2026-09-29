@@ -1,0 +1,90 @@
+{
+  "name": "13-subsaga-child-commits-on-parent-authority",
+  "description": "a cascade sub-saga commits carrying its parent's authorisation, never its own",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg_child",
+        "intent": {
+          "intent_id": "in_child"
+        },
+        "plan": [
+          {
+            "step_id": "charge",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "compensation_action": "charge.undo"
+          }
+        ],
+        "parent": {
+          "saga_id": "sg",
+          "step_id": "delegate",
+          "commit_mode": "CHILD_COMMIT_MODE_CASCADE"
+        }
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg_child",
+        "step_id": "charge"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg_child",
+        "step_id": "charge",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg_child",
+        "step_id": "charge",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "SEAL_REQUEST",
+      "payload": {
+        "saga_id": "sg_child"
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "COMMIT",
+      "payload": {
+        "saga_id": "sg_child",
+        "authorized_by": "sg"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg_child",
+    "status": "COMMITTED",
+    "intent_id": "in_child",
+    "last_seq": 6,
+    "event_count": 6,
+    "parent": "sg/delegate:CASCADE",
+    "authorized_by": "sg",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "charge",
+        "status": "COMMITTED",
+        "attempt": 1,
+        "outcome": "OK",
+        "gate": "PASS via UNSPECIFIED"
+      }
+    ]
+  }
+}

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "janus-sdk"
+version = "0.1.0"
+description = "Janus transactional evidence layer — Python SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "../../LICENSE" }
+dependencies = [
+  "protobuf>=6.31",
+  "grpcio>=1.60",
+  "cryptography>=42",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.5", "grpcio-tools>=1.60"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["janus"]
+
+[tool.ruff]
+line-length = 100
+# The generated wire types are not ours to style. Excluding them is not
+# weakening the tool: it is pointing it at the code somebody wrote.
+extend-exclude = ["janus/v1"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+# Tests import the fake daemon from conftest by name, so the tests directory is
+# on the path.
+pythonpath = [".", "tests"]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+# Generated protobuf modules do not type-check under strict mode and never
+# will; they are machine output. The SDK's own code is checked strictly, which
+# is the part a mistake can be made in.
+exclude = ["janus/v1/"]
+
+[[tool.mypy.overrides]]
+module = ["janus.v1.*", "grpc", "grpc.*"]
+ignore_missing_imports = true
+follow_imports = "skip"

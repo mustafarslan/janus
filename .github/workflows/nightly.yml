@@ -1,0 +1,68 @@
+name: nightly
+
+# The Phase 1 exit gate is a 72-hour chaos soak with zero integrity violations.
+# That does not belong on a pull request, so the long runs live here: a nightly
+# soak that is long enough to be meaningful, and a manual trigger for the full
+# 72-hour run when a release needs it.
+#
+# The nightly schedule is off: this account has no Actions credits, so a cron
+# that fires every night is a billing failure every night. `make soak` runs the
+# same thing locally, and DURATION=72h is the gate.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "soak duration (e.g. 30m, 72h)"
+        default: "30m"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: chaos soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 4320
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make build
+
+      - name: soak
+        run: |
+          ./bin/janus-soak \
+            -duration "${{ inputs.duration || '30m' }}" \
+            -sync full \
+            -segment-bytes 65536 \
+            -min-life 200ms -max-life 3s \
+            -dir "${RUNNER_TEMP}/soak" -keep
+
+      - name: upload soak report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-report
+          path: ${{ runner.temp }}/soak/soak-report.json
+          if-no-files-found: ignore
+
+  property:
+    name: property tests, many seeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Fresh seeds every night. A failure prints the seed to reproduce it, and
+      # that seed then gets pinned in regressionSeeds.
+      - name: property tests
+        run: |
+          for i in 1 2 3 4 5 6 7 8; do
+            echo "=== round $i ==="
+            go test ./pkg/evidence/ -run TestProperty -count=1 || exit 1
+          done

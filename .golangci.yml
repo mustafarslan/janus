@@ -1,0 +1,73 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - revive
+    - bodyclose
+    - errorlint
+    - gosec
+
+  settings:
+    # gosec, restricted to the rules that find nothing today and would matter if
+    # they ever did. This is an include list rather than the default set plus
+    # exclusions, and the difference is the whole decision.
+    #
+    # The full default set reports 120 findings on this tree, of which exactly
+    # one was real -- the missing write-side bound on MaxRecordLen, fixed in the
+    # same change that added this. Turning all of it on would mean excluding
+    # eight rule classes, which is a gate that reads as working while checking
+    # almost nothing, and it would train everybody to answer it with //nolint.
+    # docs/security/gosec-2026-09-12.md has the full table and the triage, so a
+    # later run can be compared against it rather than re-argued.
+    #
+    # What is here instead: SQL injection, because pkg/projection builds SQL;
+    # weak and blocklisted crypto, because this repository's whole claim rests
+    # on the strong kind; TLS verification; and memory aliasing. All zero today,
+    # so there is nothing to exclude and nothing to suppress.
+    gosec:
+      includes:
+        - G201  # SQL query built by string formatting
+        - G202  # SQL query built by string concatenation
+        - G203  # unescaped data in an HTML template
+        - G401  # weak cryptographic primitive
+        - G402  # TLS InsecureSkipVerify
+        - G403  # RSA key shorter than 2048 bits
+        - G405  # DES
+        - G406  # MD4 / RIPEMD160
+        - G501  # crypto/md5 imported
+        - G502  # crypto/des imported
+        - G503  # crypto/rc4 imported
+        - G504  # net/http/cgi imported
+        - G505  # crypto/sha1 imported
+        - G506  # golang.org/x/crypto/md4 imported
+        - G507  # golang.org/x/crypto/ripemd160 imported
+        - G601  # implicit memory aliasing in a range loop
+        - G602  # slice access out of bounds
+    revive:
+      rules:
+        - name: exported
+          disabled: false
+        - name: package-comments
+          disabled: false
+
+  exclusions:
+    rules:
+      # Generated protobuf code is not ours to style.
+      - path: ^gen/
+        linters: [revive, staticcheck, unused, misspell, errcheck, gosec]
+      # Test helpers deliberately ignore errors from cleanup paths.
+      - path: _test\.go$
+        linters: [errcheck]
+
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    paths:
+      - ^gen/

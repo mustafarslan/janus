@@ -1,0 +1,37 @@
+{
+  "measured_at": "2026-09-13T18:17:56.605053+00:00",
+  "local_equivalent": "Two processes on one host. A SIGKILL is not a region loss: the disk survives.",
+  "rto": {
+    "ms": 192,
+    "excludes": "operator decision time, and stopping the follower",
+    "ms_since_kill": 213,
+    "budget_ms": 300000,
+    "within_budget": true
+  },
+  "rpo": {
+    "question": "was any effect released whose evidence the replica lacks",
+    "acknowledged_calls": 40,
+    "evidence_present": 40,
+    "violations": 0,
+    "tolerance": 0,
+    "follower_acknowledged_seq": 41
+  },
+  "second_failover": {
+    "why_it_is_separate": "A promotion's tenure is replicated, so after one failover every replica carries one. Until the writer marker that refused every replica: the follower could not restart and no replica could be promoted.",
+    "rto": {
+      "ms": 175,
+      "ms_since_kill": 215,
+      "budget_ms": 300000,
+      "within_budget": true
+    },
+    "rpo": {
+      "acknowledged_calls": 40,
+      "evidence_present": 40,
+      "violations": 0,
+      "tolerance": 0,
+      "follower_acknowledged_seq": 85
+    },
+    "epoch": 2,
+    "verified_from": "the ORIGINAL primary's public key alone -- three writer keys and two promotions later"
+  }
+}

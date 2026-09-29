@@ -1,0 +1,260 @@
+{
+ "id": "janus.reference",
+ "rules": [
+  {
+   "id": "large-wires",
+   "match": {
+    "effect_classes": [
+     "IRREVERSIBLE_GATED"
+    ],
+    "actions": [
+     "payments.wire.large"
+    ]
+   },
+   "require": [
+    {
+     "id": "large-wire-schema",
+     "gate": "SCHEMA",
+     "phase": "PRE_EXECUTION",
+     "schema": {
+      "schema_id": "payment.v1",
+      "fields": [
+       {
+        "name": "amount_minor",
+        "type": "number"
+       },
+       {
+        "name": "currency",
+        "type": "text"
+       },
+       {
+        "name": "counterparty",
+        "type": "text"
+       }
+      ]
+     }
+    },
+    {
+     "id": "large-wire-share-of-balance",
+     "gate": "POLICY",
+     "phase": "PRE_RELEASE",
+     "policy": {
+      "expr": "amount_minor <= 25 percent of result.balance.available_minor",
+      "description": "a single payment may not exceed a quarter of the balance a prior step read"
+     }
+    },
+    {
+     "id": "large-wire-second-opinion",
+     "gate": "VALIDATOR",
+     "phase": "PRE_RELEASE",
+     "validator": {
+      "validators": [
+       "ag_credit_policy",
+       "ag_sanctions"
+      ],
+      "quorum": 2,
+      "escalate_on_disagreement": true
+     }
+    },
+    {
+     "id": "large-wire-four-eyes",
+     "gate": "HUMAN",
+     "phase": "PRE_RELEASE",
+     "human": {
+      "roles": [
+       "credit-officer",
+       "treasury-approver"
+      ],
+      "quorum": 2,
+      "separation_of_duty": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "unanswered-wires",
+   "match": {
+    "effect_classes": [
+     "IRREVERSIBLE_GATED"
+    ],
+    "actions": [
+     "payments.wire.unanswered"
+    ]
+   },
+   "require": [
+    {
+     "id": "unanswered-schema",
+     "gate": "SCHEMA",
+     "phase": "PRE_EXECUTION",
+     "schema": {
+      "schema_id": "payment.v1",
+      "fields": [
+       {
+        "name": "amount_minor",
+        "type": "number"
+       },
+       {
+        "name": "currency",
+        "type": "text"
+       },
+       {
+        "name": "counterparty",
+        "type": "text"
+       }
+      ]
+     }
+    },
+    {
+     "id": "unanswered-four-eyes",
+     "gate": "HUMAN",
+     "phase": "PRE_RELEASE",
+     "timeout_seconds": 1,
+     "human": {
+      "roles": [
+       "credit-officer"
+      ],
+      "quorum": 1,
+      "separation_of_duty": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "wires",
+   "match": {
+    "effect_classes": [
+     "IRREVERSIBLE_GATED"
+    ]
+   },
+   "require": [
+    {
+     "id": "wire-schema",
+     "gate": "SCHEMA",
+     "phase": "PRE_EXECUTION",
+     "schema": {
+      "schema_id": "payment.v1",
+      "fields": [
+       {
+        "name": "amount_minor",
+        "type": "number"
+       },
+       {
+        "name": "currency",
+        "type": "text"
+       },
+       {
+        "name": "counterparty",
+        "type": "text"
+       },
+       {
+        "name": "approved",
+        "type": "flag"
+       }
+      ]
+     }
+    },
+    {
+     "id": "wire-mandate",
+     "gate": "POLICY",
+     "phase": "PRE_EXECUTION",
+     "policy": {
+      "expr": "intent.mandate_ref != \"\"",
+      "description": "an irreversible payment needs a mandate behind it"
+     }
+    },
+    {
+     "id": "wire-currency",
+     "gate": "POLICY",
+     "phase": "PRE_EXECUTION",
+     "policy": {
+      "expr": "currency in [\"EUR\", \"GBP\", \"TRY\", \"USD\"]",
+      "description": "payments are settled only in supported currencies"
+     }
+    },
+    {
+     "id": "wire-limit",
+     "gate": "RISK_LIMIT",
+     "phase": "PRE_EXECUTION",
+     "risk_limit": {
+      "thresholds": [
+       {
+        "fact": "amount_minor",
+        "max": 1000000
+       }
+      ],
+      "max_gated_effects": 3,
+      "max_resources": 8
+     }
+    },
+    {
+     "id": "wire-approval",
+     "gate": "POLICY",
+     "phase": "PRE_RELEASE",
+     "policy": {
+      "expr": "approved == true",
+      "description": "a payment is released only against a recorded approval"
+     }
+    },
+    {
+     "id": "wire-frontier",
+     "gate": "FRONTIER",
+     "phase": "PRE_RELEASE",
+     "frontier": {}
+    }
+   ]
+  },
+  {
+   "id": "outbound-messages",
+   "match": {
+    "effect_classes": [
+     "IRREVERSIBLE_IMMEDIATE"
+    ]
+   },
+   "require": [
+    {
+     "id": "message-schema",
+     "gate": "SCHEMA",
+     "phase": "PRE_EXECUTION",
+     "schema": {
+      "schema_id": "message.v1",
+      "fields": [
+       {
+        "name": "recipient",
+        "type": "text"
+       }
+      ]
+     }
+    },
+    {
+     "id": "message-approval",
+     "gate": "POLICY",
+     "phase": "PRE_EXECUTION",
+     "policy": {
+      "expr": "approved == true",
+      "description": "an effect that cannot be recalled is sent only against a recorded approval"
+     }
+    }
+   ]
+  },
+  {
+   "id": "compensable-effects",
+   "match": {
+    "effect_classes": [
+     "COMPENSABLE",
+     "REVERSIBLE"
+    ]
+   },
+   "require": [
+    {
+     "id": "effect-approval",
+     "gate": "POLICY",
+     "phase": "PRE_RELEASE",
+     "policy": {
+      "expr": "approved == true",
+      "description": "an effect is allowed to count only against a recorded approval"
+     }
+    }
+   ]
+  }
+ ]
+}

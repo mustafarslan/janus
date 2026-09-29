@@ -1,0 +1,74 @@
+{
+  "name": "08-abort-before-effects",
+  "description": "a saga aborted before anything effectful ran needs no compensation",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "read",
+            "effect_class": "EFFECT_CLASS_PURE"
+          },
+          {
+            "step_id": "pay",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "depends_on": [
+              "read"
+            ],
+            "compensation_action": "pay.undo"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "read"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "read",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "ABORT",
+      "payload": {
+        "saga_id": "sg",
+        "reason_ref": "policy refused"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMPENSATED",
+    "last_seq": 4,
+    "event_count": 4,
+    "abort_reason": "policy refused",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "read",
+        "status": "SEALED",
+        "attempt": 1,
+        "outcome": "OK"
+      },
+      {
+        "id": "pay",
+        "status": "PLANNED"
+      }
+    ]
+  }
+}

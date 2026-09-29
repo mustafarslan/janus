@@ -1,0 +1,296 @@
+syntax = "proto3";
+
+package janus.v1;
+
+import "janus/v1/common.proto";
+
+option go_package = "github.com/mustafarslan/janus/gen/go/janus/v1;janusv1";
+
+// The gate vocabulary.
+//
+// A gate is a checkpoint an effect has to pass. The messages here describe
+// three things: what a gate may reason about (Fact), what a gate requires
+// (GateRequirement), and what a saga was admitted under (StepGates).
+//
+// The last of those is the one that carries weight. Gate requirements are
+// resolved from the policy once, at admission, and recorded in the saga's own
+// SAGA_BEGIN. A saga therefore runs under the rules that were in force when it
+// started, and an auditor reading the log years later can see which gates were
+// supposed to fire without having to reconstruct which version of the policy
+// document was deployed that afternoon. Editing the policy changes what future
+// sagas are admitted under; it cannot retroactively change what this one owed.
+
+// FactType is the type of a gate input. There are three, and the omission is
+// deliberate: there is no floating-point type.
+//
+// Money is the reason. A threshold like "amounts over 10,000 need approval"
+// decides whether a payment leaves the building, and a comparison that depends
+// on binary floating-point rounding is not a basis for that decision. Amounts
+// are carried as integers in minor units with the currency as a separate text
+// fact, which is how they are held in a ledger anyway.
+enum FactType {
+  FACT_TYPE_UNSPECIFIED = 0;
+  FACT_TYPE_TEXT = 1;
+  FACT_TYPE_NUMBER = 2;
+  FACT_TYPE_FLAG = 3;
+}
+
+// Fact is one typed input a gate may reason about.
+//
+// Facts travel with STEP_PREPARE, alongside the hash of the full arguments.
+// They are a projection of the arguments, not a substitute for them: the
+// arguments themselves are content-addressed and may hold personal data that
+// has to remain shreddable, while the handful of values a gate actually decides
+// on — an amount, a currency, a counterparty class — belong in the log where
+// the decision can be re-checked without dereferencing anything.
+//
+// Because args_hash covers the real arguments, a step that declares a fact
+// contradicting them is detectable by anyone holding both.
+message Fact {
+  string key = 1;
+  oneof value {
+    string text = 2;
+    int64 number = 3;
+    bool flag = 4;
+  }
+}
+
+// GatePhase says when a requirement is decided.
+//
+// The distinction is not a scheduling convenience. A gate that runs after the
+// participant has already acted can refuse to *release* an effect, which is
+// enough for an effect the outbox is holding and worth nothing for one that has
+// already fired. So the phase is part of what a policy declares, and admission
+// checks that the phase matches what the effect class can actually be protected
+// by.
+enum GatePhase {
+  GATE_PHASE_UNSPECIFIED = 0;
+  // PRE_EXECUTION is decided before the step runs. Refusing here means the
+  // participant is never called.
+  GATE_PHASE_PRE_EXECUTION = 1;
+  // PRE_RELEASE is decided after the step produced a result and before its
+  // effect is allowed to count. For an IRREVERSIBLE_GATED effect this is the
+  // gate that decides whether the outbox will ever release it.
+  GATE_PHASE_PRE_RELEASE = 2;
+}
+
+// FieldSpec is one field a schema gate requires of a step's facts.
+message FieldSpec {
+  string name = 1;
+  FactType type = 2;
+  // optional fields may be absent, but if present must have the declared type.
+  bool optional = 3;
+}
+
+// SchemaCheck validates the shape of a step's facts before anything reasons
+// about their values.
+//
+// It exists separately from a policy expression because "amount_minor is
+// missing" and "amount_minor is too large" are different findings, and an
+// operator woken at night deserves the first one stated plainly rather than as
+// a failed comparison.
+message SchemaCheck {
+  string schema_id = 1;
+  repeated FieldSpec fields = 2;
+}
+
+// PolicyCheck is a boolean expression over facts that must hold.
+//
+// The expression language is total: comparisons, membership, and boolean
+// connectives over typed facts, with no loops, no arithmetic, and no function
+// calls. Every expression terminates, and every expression either yields a
+// boolean or fails — and failing means the gate refuses.
+message PolicyCheck {
+  string expr = 1;
+  // description is what the log says when this check refuses, so the reason a
+  // payment was stopped is a sentence rather than a source fragment.
+  string description = 2;
+}
+
+// RiskLimitCheck caps magnitude and blast radius.
+//
+// The thresholds cap one payment. The other two caps are about the saga as a
+// whole, and they are the ones that matter against an agent doing something
+// systematically wrong rather than once: a plan that holds forty irreversible
+// effects, or touches four hundred accounts, is not made safe by each
+// individual effect being under the limit.
+message RiskLimitCheck {
+  message Threshold {
+    // fact names a NUMBER fact on the step.
+    string fact = 1;
+    // max is the largest permitted value, inclusive.
+    int64 max = 2;
+  }
+  repeated Threshold thresholds = 1;
+  // max_gated_effects caps how many irreversible steps one saga may plan.
+  // Zero means no cap.
+  uint32 max_gated_effects = 2;
+  // max_resources caps how many distinct resources the saga may touch.
+  // Zero means no cap.
+  uint32 max_resources = 3;
+}
+
+// HumanCheck requires a person to approve, under rules the log can check
+// afterwards (the human oversight of AI Act Article 14).
+//
+// The two conditions are not equally strong, and pretending otherwise would be
+// the sort of claim that fails an audit.
+//
+// **Separation of duty is structurally enforced.** The approver's identity and
+// the saga's initiating principal are both in the log, so "the approver was not
+// the initiator" can be re-derived by anyone holding the bundle, years later,
+// trusting nobody.
+//
+// **Roles are asserted, not proven.** The answer records the roles the
+// authenticating layer said the approver held. Janus checks the recorded claim;
+// it cannot check that the claim was true. Making that real is the identity
+// work in Phase 5 (OIDC plus WebAuthn step-up), and until then a role check is
+// exactly as trustworthy as whatever wrote the answer.
+message HumanCheck {
+  // roles that entitle somebody to answer. Empty means any authenticated
+  // human. An answer from somebody holding none of them fails the gate rather
+  // than being ignored: a person approving a payment they are not entitled to
+  // approve is an incident, not noise.
+  repeated string roles = 1;
+  // quorum is how many distinct people must approve. Zero means one.
+  uint32 quorum = 2;
+  // separation_of_duty refuses an approval from the principal the saga was
+  // initiated on behalf of — the four-eyes rule, and the one condition here
+  // that does not depend on trusting an identity provider.
+  bool separation_of_duty = 3;
+
+  // require_established_identity refuses an answer whose roles were only
+  // asserted.
+  //
+  // Without it, this gate checks the roles the answer *records* — which is
+  // exactly as trustworthy as whatever wrote the answer. With it, the answer
+  // has to carry an assertion in auth_ref that verifies against keys the
+  // deployment trusts, and the roles the gate checks are the ones that
+  // assertion established rather than the ones the answer claimed.
+  //
+  // It is opt-in because turning it on without an identity provider in place
+  // would refuse every approval, and a control that has to be switched off to
+  // get work done is a control that gets switched off.
+  bool require_established_identity = 4;
+
+  // require_step_up additionally demands a fresh, phishing-resistant proof of
+  // presence bound to *this* approval.
+  //
+  // The binding is the point. An assertion that merely proves the approver was
+  // present at some approval is what a session cookie already proves; this one
+  // is signed over a challenge derived from the saga, step, requirement and
+  // attempt, so it cannot be captured at one payment and presented at another.
+  bool require_step_up = 5;
+}
+
+// ValidatorCheck asks an independent participant whether the step is sound —
+// SagaLLM's separated-validator lesson.
+//
+// The point is independence, so the validators are named in the policy rather
+// than chosen at runtime by whatever is being validated. An answer from a
+// participant that was not asked fails the gate: somebody answering a question
+// nobody put to them is the shape of a compromised path, not a helpful
+// volunteer.
+message ValidatorCheck {
+  // validators are the participant ids entitled to answer.
+  repeated string validators = 1;
+  // quorum is how many must agree. Zero means one.
+  uint32 quorum = 2;
+  // escalate_on_disagreement holds the step for a human when the validators
+  // do not agree, rather than letting a majority carry it.
+  //
+  // Disagreement between independent checkers is information, and averaging it
+  // away is how a system with two opinions ends up acting as though it had one.
+  bool escalate_on_disagreement = 3;
+}
+
+// FrontierCheck makes the step wait until no unfinished saga holds a resource
+// it touched at an earlier sequence (invariant I6).
+//
+// It is a wait rather than a refusal: the blocking saga will commit or
+// compensate, and either resolves the conflict. Refusing would turn ordinary
+// contention into a failed transaction.
+message FrontierCheck {}
+
+// GateRequirement is one checkpoint, resolved from the policy.
+message GateRequirement {
+  // id is unique within the step's requirement list and is what a verdict
+  // cites, so a decision points at the rule that produced it.
+  string id = 1;
+  GateType gate = 2;
+  GatePhase phase = 3;
+  oneof check {
+    SchemaCheck schema = 4;
+    PolicyCheck policy = 5;
+    RiskLimitCheck risk_limit = 6;
+    FrontierCheck frontier = 7;
+    HumanCheck human = 8;
+    ValidatorCheck validator = 9;
+  }
+
+  // timeout_seconds is how long this gate may stay unanswered before the
+  // system answers it FAIL on the deadline's behalf.
+  //
+  // Zero means no deadline, which is every requirement written before this
+  // field existed: an unanswered gate waits forever, which is fail-closed and
+  // was the prior behaviour.
+  //
+  // It travels here, on the recorded requirement, rather than being read from
+  // the policy file when a deadline is checked. That is the whole reason the
+  // expiry is auditable: the deadline a gate was admitted under is in the
+  // saga's own SAGA_BEGIN, so re-deriving the decision years later reaches the
+  // same answer even if the policy has since been edited.
+  //
+  // Seconds because a deadline is hours and policies are hand-written JSON.
+  uint32 timeout_seconds = 10;
+}
+
+// GateAnswer is an answer to a gate from outside Janus.
+//
+// A validator's opinion and a human's approval are the same shape — somebody
+// who is not the gated agent says yes or no — so they are one message and one
+// event kind. What differs is who may answer and what makes the answer count,
+// and both of those live in the requirement rather than here.
+//
+// Answers arrive as their own events, before the verdict that reads them. A
+// coordinator resuming after a crash folds the approval that was given rather
+// than asking for it again, which is what keeps a human in the loop compatible
+// with replay determinism (invariant I5).
+message GateAnswer {
+  string saga_id = 1;
+  string step_id = 2;
+  // requirement_id names the gate being answered. An answer that names a
+  // requirement the saga was not admitted under is refused: it would otherwise
+  // be possible to satisfy a quorum with answers to a question nobody asked.
+  string requirement_id = 3;
+  // attempt is the step attempt this answers. An approval is for one attempt,
+  // not for the step: a retry runs the participant again and deserves its own
+  // decision.
+  uint32 attempt = 4;
+  Actor actor = 5;
+  // verdict is PASS or FAIL. An answerer cannot escalate — escalation is what
+  // the composition does while waiting for an answer, not something an answer
+  // can say.
+  Verdict verdict = 6;
+  string reason = 7;
+  // roles the authenticating layer asserted the actor holds. See HumanCheck
+  // for what this claim is and is not worth.
+  repeated string roles = 8;
+  // auth_ref points at the authentication evidence — a WebAuthn assertion, an
+  // OIDC token digest — held in content-addressed storage rather than inlined,
+  // so it can be shredded without breaking the chain.
+  string auth_ref = 9;
+  // signature is the answerer's (or, for a human, the relaying participant's)
+  // signature over this answer, kept in the record so it verifies offline.
+  // Empty from a participant whose manifest declares no keys.
+  ParticipantSignature signature = 10;
+}
+
+// StepGates is the requirement list one step was admitted under.
+message StepGates {
+  string step_id = 1;
+  // rule_id names the policy rule that matched, so an auditor can find the
+  // clause rather than infer it from the requirements it produced.
+  string rule_id = 2;
+  repeated GateRequirement require = 3;
+}

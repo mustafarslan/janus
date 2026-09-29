@@ -1,0 +1,2 @@
+gate audit: 15 verdicts across 5 sagas re-derived from the log
+  every recorded verdict follows from the inputs recorded with it

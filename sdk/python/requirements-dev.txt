@@ -1,0 +1,15 @@
+# Pinned exactly, for the same reason the protoc plugins and the verifier's
+# toolchain are: a check whose tools move underneath it reports a different
+# answer on a commit that changed nothing, and the first thing anybody does
+# with a check like that is stop believing it.
+grpcio==1.71.0
+# Matched to the gencode the pinned buf plugin emits: protobuf refuses a
+# runtime whose major version differs from the generated code's, and it is
+# right to. When the plugin pin in buf.gen.yaml moves, this moves with it.
+protobuf==6.31.1
+# Ed25519, for a participant's signature over what it asks Janus to record
+#. The standard library has none.
+cryptography==44.0.2
+pytest==8.3.5
+mypy==1.15.0
+ruff==0.11.13

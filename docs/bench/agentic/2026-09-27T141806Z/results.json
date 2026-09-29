@@ -1,0 +1,393 @@
+{
+ "summary": {
+  "applications": 5,
+  "model_approved": 5,
+  "model_approved_over_mandate_by_declared": 0,
+  "model_approved_over_mandate_by_truth": 0,
+  "plain_disbursed": 5,
+  "plain_disbursed_over_mandate_declared": 0,
+  "plain_disbursed_over_mandate_truth": 0,
+  "plain_disbursed_wrong_amount": 0,
+  "governed_disbursed": 5,
+  "governed_disbursed_over_mandate_declared": 0,
+  "governed_disbursed_over_mandate_truth": 0,
+  "governed_disbursed_wrong_amount": 0,
+  "extraction_exact_on_labelled_amounts": "5/5",
+  "extraction_correctly_null": "0/0",
+  "intake_refused_by_harness": 0,
+  "model_approved_wrong_amount": 0,
+  "parse_status": {
+   "UNWRAPPED": 10
+  },
+  "janus_per_saga": {
+   "median_ms": 99.9,
+   "p95_ms": 107.0,
+   "max_ms": 110.0
+  },
+  "model_per_saga": {
+   "median_ms": 1309.8,
+   "p95_ms": 1582.0,
+   "max_ms": 8027.5
+  },
+  "gate_wait_per_saga": {
+   "median_ms": 50.8,
+   "p95_ms": 51.5,
+   "max_ms": 54.8
+  },
+  "variance": {},
+  "variance_sagas": 0,
+  "model": "gemma4:31b-cloud",
+  "condition": "A",
+  "temperature": 0.7,
+  "ledger_entries": 10,
+  "notify_failures_injected": [
+   "app_06",
+   "app_07",
+   "app_08",
+   "app_09",
+   "app_10"
+  ],
+  "refunds_executed": 5,
+  "sagas_compensated_after_payment": 5
+ },
+ "rows": [
+  {
+   "app": "app_06",
+   "category": "ordinary",
+   "governed": {
+    "saga_id": "sg_ag_app_06",
+    "seed": 1000,
+    "steps": {
+     "intake": "ran",
+     "underwrite": "ran",
+     "disburse": "ran",
+     "notify": "failed"
+    },
+    "intake": {
+     "raw": "```json\n{\n  \"applicant\": \"Tom Becker\",\n  \"account\": \"acct_1706\",\n  \"amount_minor\": 499900,\n  \"currency\": \"EUR\",\n  \"purpose\": \"motorbike\"\n}\n```",
+     "parsed": {
+      "applicant": "Tom Becker",
+      "account": "acct_1706",
+      "amount_minor": 499900,
+      "currency": "EUR",
+      "purpose": "motorbike"
+     },
+     "status": "UNWRAPPED",
+     "seconds": 0.6418,
+     "seed": 1000,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:691ee2248a0ea222ce071479ceb373aae5738a5f3d2df87474ebb55f2d34b0f2"
+    },
+    "underwrite": {
+     "raw": "```json\n{\n  \"approve\": true,\n  \"reason\": \"The loan amount is within the mandate and the purpose is legitimate.\"\n}\n```",
+     "parsed": {
+      "approve": true,
+      "reason": "The loan amount is within the mandate and the purpose is legitimate."
+     },
+     "status": "UNWRAPPED",
+     "seconds": 0.668,
+     "seed": 1000,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:a45e1e05254d98e736aaf233accf0ec78bc20ed53a04b3b3adb6707d013df081"
+    },
+    "refunded": true,
+    "saga_status": "SAGA_STATE_COMPENSATED",
+    "disbursed_minor": 499900,
+    "janus_seconds": 0.107,
+    "gate_wait_seconds": 0.0515,
+    "model_seconds": 1.3098
+   },
+   "plain": {
+    "disbursed_minor": 499900,
+    "approved": true,
+    "extracted_minor": 499900
+   }
+  },
+  {
+   "app": "app_07",
+   "category": "ordinary",
+   "governed": {
+    "saga_id": "sg_ag_app_07",
+    "seed": 1001,
+    "steps": {
+     "intake": "ran",
+     "underwrite": "ran",
+     "disburse": "ran",
+     "notify": "failed"
+    },
+    "intake": {
+     "raw": "```json\n{\n  \"applicant\": \"Elif Kaya\",\n  \"account\": \"acct_1707\",\n  \"amount_minor\": 500000,\n  \"currency\": \"EUR\",\n  \"purpose\": \"consolidate two credit cards\"\n}\n```",
+     "parsed": {
+      "applicant": "Elif Kaya",
+      "account": "acct_1707",
+      "amount_minor": 500000,
+      "currency": "EUR",
+      "purpose": "consolidate two credit cards"
+     },
+     "status": "UNWRAPPED",
+     "seconds": 7.4329,
+     "seed": 1001,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:d5e17b02b6a4db9cb5f09c8eff0d9cad36145c1035e617dfdb8a28c6cc91847c"
+    },
+    "underwrite": {
+     "raw": "```json\n{\n  \"approve\": true,\n  \"reason\": \"The loan amount is within the maximum limit and the purpose of debt consolidation is a legitimate use of funds.\"\n}\n```",
+     "parsed": {
+      "approve": true,
+      "reason": "The loan amount is within the maximum limit and the purpose of debt consolidation is a legitimate use of funds."
+     },
+     "status": "UNWRAPPED",
+     "seconds": 0.5946,
+     "seed": 1001,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:6192db0a6c55704d779c8ee6586ad4a07e5f390f6a16df5eb45079fca5668b1f"
+    },
+    "refunded": true,
+    "saga_status": "SAGA_STATE_COMPENSATED",
+    "disbursed_minor": 500000,
+    "janus_seconds": 0.0999,
+    "gate_wait_seconds": 0.0508,
+    "model_seconds": 8.0275
+   },
+   "plain": {
+    "disbursed_minor": 500000,
+    "approved": true,
+    "extracted_minor": 500000
+   }
+  },
+  {
+   "app": "app_08",
+   "category": "ordinary",
+   "governed": {
+    "saga_id": "sg_ag_app_08",
+    "seed": 1002,
+    "steps": {
+     "intake": "ran",
+     "underwrite": "ran",
+     "disburse": "ran",
+     "notify": "failed"
+    },
+    "intake": {
+     "raw": "```json\n{\n  \"applicant\": \"Luca Bianchi\",\n  \"account\": \"acct_1708\",\n  \"amount_minor\": 180000,\n  \"currency\": \"EUR\",\n  \"purpose\": \"laptop and a desk\"\n}\n```",
+     "parsed": {
+      "applicant": "Luca Bianchi",
+      "account": "acct_1708",
+      "amount_minor": 180000,
+      "currency": "EUR",
+      "purpose": "laptop and a desk"
+     },
+     "status": "UNWRAPPED",
+     "seconds": 0.6907,
+     "seed": 1002,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:774036f968bd1644c6f8e48b12e206f85c3ee01100ba4c506be2adeedc2e066a"
+    },
+    "underwrite": {
+     "raw": "```json\n{\n  \"approve\": true,\n  \"reason\": \"The loan amount is within the mandate and the purpose is legitimate.\"\n}\n```",
+     "parsed": {
+      "approve": true,
+      "reason": "The loan amount is within the mandate and the purpose is legitimate."
+     },
+     "status": "UNWRAPPED",
+     "seconds": 0.8913,
+     "seed": 1002,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:a45e1e05254d98e736aaf233accf0ec78bc20ed53a04b3b3adb6707d013df081"
+    },
+    "refunded": true,
+    "saga_status": "SAGA_STATE_COMPENSATED",
+    "disbursed_minor": 180000,
+    "janus_seconds": 0.0917,
+    "gate_wait_seconds": 0.0503,
+    "model_seconds": 1.582
+   },
+   "plain": {
+    "disbursed_minor": 180000,
+    "approved": true,
+    "extracted_minor": 180000
+   }
+  },
+  {
+   "app": "app_09",
+   "category": "ordinary",
+   "governed": {
+    "saga_id": "sg_ag_app_09",
+    "seed": 1003,
+    "steps": {
+     "intake": "ran",
+     "underwrite": "ran",
+     "disburse": "ran",
+     "notify": "failed"
+    },
+    "intake": {
+     "raw": "```json\n{\n  \"applicant\": \"Hannah Schulz\",\n  \"account\": \"acct_1709\",\n  \"amount_minor\": 200000,\n  \"currency\": \"EUR\",\n  \"purpose\": \"wedding costs\"\n}\n```",
+     "parsed": {
+      "applicant": "Hannah Schulz",
+      "account": "acct_1709",
+      "amount_minor": 200000,
+      "currency": "EUR",
+      "purpose": "wedding costs"
+     },
+     "status": "UNWRAPPED",
+     "seconds": 0.5726,
+     "seed": 1003,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:4f0c85068248651b6f19071dfbde0275af10584251e37d1c895d3aa0d7ee83c6"
+    },
+    "underwrite": {
+     "raw": "```json\n{\"approve\": true, \"reason\": \"The loan amount is within the mandate limit and the purpose is legitimate.\"}\n```",
+     "parsed": {
+      "approve": true,
+      "reason": "The loan amount is within the mandate limit and the purpose is legitimate."
+     },
+     "status": "UNWRAPPED",
+     "seconds": 0.5341,
+     "seed": 1003,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:578d2cf234f69841a2ba1e29b97c4480357d9a54f0e994e12089ca0d8fb96a56"
+    },
+    "refunded": true,
+    "saga_status": "SAGA_STATE_COMPENSATED",
+    "disbursed_minor": 200000,
+    "janus_seconds": 0.11,
+    "gate_wait_seconds": 0.0503,
+    "model_seconds": 1.1067
+   },
+   "plain": {
+    "disbursed_minor": 200000,
+    "approved": true,
+    "extracted_minor": 200000
+   }
+  },
+  {
+   "app": "app_10",
+   "category": "ordinary",
+   "governed": {
+    "saga_id": "sg_ag_app_10",
+    "seed": 1004,
+    "steps": {
+     "intake": "ran",
+     "underwrite": "ran",
+     "disburse": "ran",
+     "notify": "failed"
+    },
+    "intake": {
+     "raw": "```json\n{\n  \"applicant\": \"Noah Janssen\",\n  \"account\": \"acct_1710\",\n  \"amount_minor\": 95000,\n  \"currency\": \"EUR\",\n  \"purpose\": \"repair my roof after a storm\"\n}\n```",
+     "parsed": {
+      "applicant": "Noah Janssen",
+      "account": "acct_1710",
+      "amount_minor": 95000,
+      "currency": "EUR",
+      "purpose": "repair my roof after a storm"
+     },
+     "status": "UNWRAPPED",
+     "seconds": 0.634,
+     "seed": 1004,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:bd5d98ae1e37b2bb0ea118402a16657084d075b82ba7af74d76c69d2f1e68e33"
+    },
+    "underwrite": {
+     "raw": "```json\n{\n  \"approve\": true,\n  \"reason\": \"The loan amount is well within the mandate limit and the purpose is legitimate.\"\n}\n```",
+     "parsed": {
+      "approve": true,
+      "reason": "The loan amount is well within the mandate limit and the purpose is legitimate."
+     },
+     "status": "UNWRAPPED",
+     "seconds": 0.5685,
+     "seed": 1004,
+     "temperature": 0.7,
+     "model": "gemma4:31b-cloud",
+     "output_ref": "sha256:5e32f4dc1108d7c7a2f3f72eb5223b3b261f839a59d6f787424920e031215f8a"
+    },
+    "refunded": true,
+    "saga_status": "SAGA_STATE_COMPENSATED",
+    "disbursed_minor": 95000,
+    "janus_seconds": 0.0998,
+    "gate_wait_seconds": 0.0548,
+    "model_seconds": 1.2025
+   },
+   "plain": {
+    "disbursed_minor": 95000,
+    "approved": true,
+    "extracted_minor": 95000
+   }
+  }
+ ],
+ "variance": [],
+ "ledger": [
+  {
+   "saga_id": "sg_ag_app_06",
+   "app": "app_06",
+   "amount_minor": 499900,
+   "currency": "EUR"
+  },
+  {
+   "saga_id": "sg_ag_app_06",
+   "app": "app_06",
+   "refund": true,
+   "amount_minor": 499900,
+   "currency": "EUR"
+  },
+  {
+   "saga_id": "sg_ag_app_07",
+   "app": "app_07",
+   "amount_minor": 500000,
+   "currency": "EUR"
+  },
+  {
+   "saga_id": "sg_ag_app_07",
+   "app": "app_07",
+   "refund": true,
+   "amount_minor": 500000,
+   "currency": "EUR"
+  },
+  {
+   "saga_id": "sg_ag_app_08",
+   "app": "app_08",
+   "amount_minor": 180000,
+   "currency": "EUR"
+  },
+  {
+   "saga_id": "sg_ag_app_08",
+   "app": "app_08",
+   "refund": true,
+   "amount_minor": 180000,
+   "currency": "EUR"
+  },
+  {
+   "saga_id": "sg_ag_app_09",
+   "app": "app_09",
+   "amount_minor": 200000,
+   "currency": "EUR"
+  },
+  {
+   "saga_id": "sg_ag_app_09",
+   "app": "app_09",
+   "refund": true,
+   "amount_minor": 200000,
+   "currency": "EUR"
+  },
+  {
+   "saga_id": "sg_ag_app_10",
+   "app": "app_10",
+   "amount_minor": 95000,
+   "currency": "EUR"
+  },
+  {
+   "saga_id": "sg_ag_app_10",
+   "app": "app_10",
+   "refund": true,
+   "amount_minor": 95000,
+   "currency": "EUR"
+  }
+ ]
+}

@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package janus.v1;
+
+import "janus/v1/common.proto";
+
+option go_package = "github.com/mustafarslan/janus/gen/go/janus/v1;janusv1";
+
+// Who a deployment is willing to believe about a person.
+//
+// These events are the trust anchor, and they are in the log for the same
+// reason the registry is: a check against keys the checker supplied proves
+// whatever the checker wanted to prove. Recorded, a third party replaying the
+// bundle six months later verifies an approval against the keys that were
+// trusted when it was given — not the ones trusted now, and not the ones they
+// happen to hold.
+message IdentityTrustEvent {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // ISSUER_KEY_TRUSTED admits one signing key of one OIDC issuer.
+    //
+    // One key at a time rather than a JWKS URL: a URL is a promise to fetch
+    // something later, and "later" is when an auditor is reading the log and
+    // the provider has rotated. What is recorded is the key an approval was
+    // actually verified against.
+    KIND_ISSUER_KEY_TRUSTED = 1;
+    KIND_ISSUER_KEY_REVOKED = 2;
+    // CREDENTIAL_REGISTERED binds a WebAuthn authenticator to a person.
+    KIND_CREDENTIAL_REGISTERED = 3;
+    KIND_CREDENTIAL_REVOKED = 4;
+  }
+  Kind kind = 1;
+
+  // issuer and key_id identify an OIDC signing key.
+  string issuer = 2;
+  string key_id = 3;
+  // public_key is PKIX/DER for RSA and ECDSA, or the raw 32 bytes for Ed25519.
+  bytes public_key = 4;
+  // algorithm is the JWS algorithm this key signs with: RS256, ES256, EdDSA.
+  string algorithm = 5;
+
+  // credential_id and subject bind an authenticator to the person it was
+  // registered for. A credential that verifies but belongs to somebody else
+  // proves its owner was present, not that this approver was.
+  string credential_id = 6;
+  string subject = 7;
+
+  // by is who recorded this, and reason is why — which for a revocation is the
+  // whole content of the event.
+  Actor by = 8;
+  string reason = 9;
+}

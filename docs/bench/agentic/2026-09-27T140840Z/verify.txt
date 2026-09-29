@@ -1,0 +1,1 @@
+PASS /Volumes/AI_SSD/Projects/janus/.agentic-runs/2026-09-27T140840Z/evidence events=1215 seq=1..1215 head=blake3:2c1306afa364819162800bc2ca31017d9c0a12ce4aeadd1f49ac05b1f67e6bec

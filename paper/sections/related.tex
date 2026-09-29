@@ -1,0 +1,124 @@
+\section{Related Work}
+\label{sec:related}
+
+\emph{Transactions for agents.} Sagas~\cite{sagas} give long-lived work
+atomicity through compensation. Durable-execution engines~\cite{temporal}
+record each decision in a workflow's history before the activity it schedules
+and replay that history to recover, and serverless workflow systems log each
+externally visible step to make it exactly once~\cite{beldi,boki}; the history is
+the engine's own, not built to be tamper-evident or checked by a third party.
+SagaLLM~\cite{sagallm} brings sagas with compensation and validator agents to
+multi-agent LLM planning. Atomix~\cite{atomix} adds progress-aware commit over
+tool effects, compensates in reverse dependency order and holds irreversible
+effects until commit. Mnemosyne~\cite{mnemosyne} is the closest to Janus's
+transactional core: an append-only log of committed transitions is its source of
+truth, a deterministic gate checks each proposal against a state projected from
+it, external effects leave through an outbox only after commit, and compensation
+is a new admitted transition; it has no hash chain, signature or verifier, and
+states that its stress tests are not crash experiments. Authority at Commit
+Time~\cite{authoritycommit} likewise records the authorised intent before an
+outbox relay executes it and treats a compensation as a new governed effect,
+without a signed log or a verifier. Cordon~\cite{cordon} stages external effects
+in an outbox, validates the composed task before releasing them, and binds a
+human approval to ``one transaction object, action, sink, and time window''.
+AgentRewind and related work on resumption~\cite{agentrewind,saferesume,resumemeansresume}
+and compensation~\cite{rac} address recovery after an agent goes wrong; Resume
+Means Resume kills workflow runtimes with \code{SIGKILL} at chosen points, as we
+do. Beyond that, the crash evidence in this line of work is kill points inside
+one process (Atomix) or rollback followed by a resume check (Cordon).
+
+\emph{Gating and evidence of agent runs.} Several systems put a gate in front of
+tool calls. Faramesh~\cite{faramesh} has executors refuse any call without a
+permit bound to a hash of the action and keeps a hash-chained decision ledger;
+AARM~\cite{aarm} specifies, without implementing, blocking approval and signed
+receipts verifiable offline, the receipts written after execution;
+SAL~\cite{sal} validates intents against live state and hashes the decision into
+its ledger after execution; AEGIS~\cite{aegis} holds risky calls for an operator
+and signs each trace into a SHA-256 chain with a per-agent Ed25519 key. They
+decide on the action's arguments, policy or live state rather than on facts a
+signed log holds, and none holds the effect until its record is durable.
+NovaFabric~\cite{novafabric} seals an agent run into a signed capsule on an
+append-only Merkle log, exports a bundle it states stock tools can verify (not
+yet exercised by an independent verifier), and requires a promotion approval
+from a key other than the proposer's, linked to a digest of the proposal---but
+gates the lifecycle of evidence rather than live effects, and states the
+opposite of evidence before effect: capture ``must never stall or fail the
+agent''. Agent Flight Recorder~\cite{agentflightrecorder} hash-chains agent
+events into Merkle epochs anchored on a public chain, which defends against the
+operator rewriting its own history---a property Janus lacks
+(\cref{sec:model-out})---and records guardrail verdicts without gating on them.
+Proof of Execution~\cite{proofofexecution} is the closest to our title property:
+every effect passes one gateway, events are signed, and its Lemma~1 has the
+effector obtain ``a sealed acknowledgment'' before ``committing any persistent
+mutation'', reducing that ordering (assumption A5) to the effector holding
+credentials nobody else does; the seal is implemented and measured, but the
+ordering is not tested under failure, and its prototype runs no LLM. Right to
+History~\cite{righttohistory} keeps an RFC~6962 Merkle log with signed tree heads
+and a hold-for-approval workflow, but the hold governs the record, not the
+effect: ``the actor acts, the kernel records''. Auditable
+Agents~\cite{auditableagents} argues for verifiable agent records;
+LEDGER~\cite{ledger} builds a claim-to-evidence graph for a reviewer, which it
+treats as an audit aid rather than a verifiable record; a recent
+survey~\cite{tracestotrust} maps the space.
+
+\emph{Tamper-evident logs and accountability.} Janus uses the data structures of
+secure audit logs~\cite{schneierkelsey}, linked timestamping~\cite{haberstornetta},
+tamper-evident history trees~\cite{crosbywallach} and Certificate
+Transparency~\cite{rfc6962,rfc9162}. It does not have the property much of that
+literature is about: detecting a logger that is itself compromised. Fork
+consistency~\cite{sundr}, witness cosigning~\cite{cosi} and public anchoring are
+the known answers, and Janus implements none. Re-deriving each recorded decision
+from the log, as \code{janus-gate audit} does, follows PeerReview's replay of a
+tamper-evident log against a deterministic reference
+implementation~\cite{peerreview}.
+
+\emph{Where Janus sits.} \Cref{tab:related} records what the closest systems
+\emph{state} in their own text, read in full; a dash means not stated, not
+absent. Each property appears somewhere, and Mnemosyne, Authority at Commit Time
+and Proof of Execution (PoE) each state a gate on recorded facts and an effect that
+waits for its record. What we have not found stated together is that ordering
+with a signed log from which an auditor re-derives every decision offline, with
+one public key, tested by killing the process that writes the log.
+
+\emph{Approval integrity.} That an approval must bind the exact action that
+executes is established: in payment regulation as dynamic
+linking~\cite{psd2rts}, for agents as consent integrity~\cite{wyaiwye} and
+action cards re-verified at dispatch~\cite{actioncard}, and in its failure as
+Loopjacking~\cite{loopjacking}. Time-of-check to time-of-use gaps in an agent's
+own checks~\cite{toctouagents,atomicityagents} are the same shape one level
+down. \Cref{sec:findings} reports an instance in Janus.
+
+\begin{table}[t]
+\caption{What the closest systems state in their own text}
+\label{tab:related}
+\centering\scriptsize
+\setlength{\tabcolsep}{2.6pt}
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+& \rotatebox{70}{compensation} & \rotatebox{70}{signed hash chain} & \rotatebox{70}{gate on recorded facts} & \rotatebox{70}{evidence before effect} & \rotatebox{70}{offline verifier} & \rotatebox{70}{crash injection} & \rotatebox{70}{real LLM} \\
+\midrule
+SagaLLM~\cite{sagallm} & \checkmark & -- & $\sim$ & -- & -- & -- & \checkmark \\
+Atomix~\cite{atomix} & \checkmark & -- & $\sim$ & $\sim$ & -- & $\sim$ & \checkmark \\
+Cordon~\cite{cordon} & $\sim$ & -- & \checkmark & \checkmark & -- & -- & \checkmark \\
+Mnemosyne~\cite{mnemosyne} & \checkmark & $\sim$ & \checkmark & \checkmark & -- & $\times$ & \checkmark \\
+Auth.\ at Commit~\cite{authoritycommit} & $\sim$ & $\sim$ & \checkmark & \checkmark & -- & $\sim$ & $\sim$ \\
+Resume M.\ R.~\cite{resumemeansresume} & -- & $\sim$ & -- & $\sim$ & -- & \checkmark & \checkmark \\
+Faramesh~\cite{faramesh} & -- & $\sim$ & $\sim$ & $\sim$ & $\sim$ & -- & -- \\
+AARM~\cite{aarm} & -- & $\sim$ & $\sim$ & -- & $\sim$ & -- & -- \\
+SAL~\cite{sal} & -- & $\sim$ & $\sim$ & $\times$ & $\sim$ & -- & -- \\
+AEGIS~\cite{aegis} & -- & \checkmark & $\sim$ & -- & $\sim$ & -- & $\sim$ \\
+NovaFabric~\cite{novafabric} & -- & \checkmark & $\sim$ & $\times$ & \checkmark & -- & \checkmark \\
+PoE~\cite{proofofexecution} & -- & \checkmark & \checkmark & \checkmark & $\sim$ & -- & -- \\
+Right to H.~\cite{righttohistory} & -- & $\sim$ & $\sim$ & $\times$ & $\sim$ & -- & -- \\
+Flight Rec.~\cite{agentflightrecorder} & -- & $\sim$ & $\sim$ & -- & $\sim$ & -- & $\sim$ \\
+\textbf{Janus}$^{*}$ & \checkmark & \checkmark & \checkmark & \checkmark$^{\dagger}$ & \checkmark & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}\\[2pt]
+\raggedright $\sim$: partial, recorded only, stated as a requirement, or cited
+from another system; $\times$: the paper states the opposite. Right to History
+signs Merkle tree heads, not a chain of events, and its package is checked against
+a Merkle root rather than a key. $^{*}$Janus's row is ours, by the same rule
+applied to this paper. $^{\dagger}$On the MCP edge; the SDK path is cooperative
+admission (\cref{sec:design-edges}).
+% source: each cell rests on a quote from the cited paper's own text, read in full (2026-09-27 to 2026-09-29)
+\end{table}

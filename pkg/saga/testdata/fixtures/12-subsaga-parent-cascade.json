@@ -1,0 +1,87 @@
+{
+  "name": "12-subsaga-parent-cascade",
+  "description": "a parent delegates a step to a cascade sub-saga, then seals and commits",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "intent": {
+          "intent_id": "in"
+        },
+        "plan": [
+          {
+            "step_id": "delegate",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "compensation_action": "delegate.undo"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "delegate",
+        "spawns": {
+          "saga_id": "sg_child",
+          "commit_mode": "CHILD_COMMIT_MODE_CASCADE"
+        }
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "delegate",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "delegate",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "SEAL_REQUEST",
+      "payload": {
+        "saga_id": "sg"
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "COMMIT",
+      "payload": {
+        "saga_id": "sg"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMMITTED",
+    "intent_id": "in",
+    "last_seq": 6,
+    "event_count": 6,
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "delegate",
+        "status": "COMMITTED",
+        "attempt": 1,
+        "outcome": "OK",
+        "child": "sg_child:CASCADE",
+        "gate": "PASS via UNSPECIFIED"
+      }
+    ]
+  }
+}

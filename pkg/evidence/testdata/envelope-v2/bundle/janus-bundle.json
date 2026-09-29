@@ -1,0 +1,125 @@
+{
+  "bundle_version": 1,
+  "created_at": "2026-09-05T12:51:46.423895Z",
+  "producer": "janus-skeleton/dev",
+  "partition": "default",
+  "keys": {
+    "ed25519-11a115db07374711": "820af4d4970368d32f471ec107a1b32708319015a761c345dfda260adba50ed3"
+  },
+  "segments": [
+    {
+      "segment_id": 1,
+      "file": "segments/0000000000000001.jseg",
+      "digest": "blake3:30a7f7efacaebf4a4a0cbc83cddae6215077e01369ced285198249b1edee6167",
+      "records": 6,
+      "first_seq": 1,
+      "last_seq": 6,
+      "sealed": true
+    }
+  ],
+  "first_seq": 1,
+  "last_seq": 6,
+  "events": 6,
+  "head_chain": "blake3:da0cde3747a828cb63412fda2f956590f1234a7606cf519597ab515a51225d0c",
+  "tenant": {
+    "id": "demo",
+    "jurisdiction": "DE"
+  },
+  "scope": {
+    "saga_id": "sg_skeleton_0001",
+    "rationale": "Phase 0 walking skeleton demonstration"
+  },
+  "selection": [
+    {
+      "seq": 1,
+      "event_id": "01a071a0-0053-70c3-8e60-bde27f0daedb",
+      "kind": "SAGA_BEGIN",
+      "saga_id": "sg_skeleton_0001",
+      "segment_id": 1,
+      "leaf_index": 0,
+      "tree_size": 6,
+      "chain_hash": "d8884a9c9da97acebec9103a0e7709bd08353f4c873e25a4e8d42381c22e775a",
+      "merkle_proof": [
+        "9806cc8e227a7be592f9fe384730813cf77614a663c13445b9a0e70146411eb5",
+        "324c302fe0f8060931238e230dbe4fa98367ddfa1ce98fcca8f0c6b10a601b83",
+        "faed6e03133ff7f2862da53bbf77731c411c480c15a602a71080fc38c1f3e08b"
+      ]
+    },
+    {
+      "seq": 2,
+      "event_id": "01a071a0-005d-774b-a57c-75b84268056a",
+      "kind": "STEP_PREPARE",
+      "saga_id": "sg_skeleton_0001",
+      "step_id": "st_summarise",
+      "segment_id": 1,
+      "leaf_index": 1,
+      "tree_size": 6,
+      "chain_hash": "e2e5aacd4cdc970cfbd8ea0170821eac7acec234436e86edc70e2ef359594191",
+      "merkle_proof": [
+        "67ae50f745e3cd6d75237ebb631807e3c8568fdbd40489c2931252bf55011ed9",
+        "324c302fe0f8060931238e230dbe4fa98367ddfa1ce98fcca8f0c6b10a601b83",
+        "faed6e03133ff7f2862da53bbf77731c411c480c15a602a71080fc38c1f3e08b"
+      ]
+    },
+    {
+      "seq": 3,
+      "event_id": "01a071a0-0063-776e-91c2-1f511683c838",
+      "kind": "DPR",
+      "saga_id": "sg_skeleton_0001",
+      "step_id": "st_summarise",
+      "segment_id": 1,
+      "leaf_index": 2,
+      "tree_size": 6,
+      "chain_hash": "e7f29e19a1615c11233538c4bfc4e7b2c57cdcc82b5a57ee4a1aff7103af5bd9",
+      "merkle_proof": [
+        "c604bc95dd19f17a828e09343c289e4d8f305b8ba36f6735b8bddc41f4421e3c",
+        "2df506977c05217d8a0941e4a2c40b79078bac9820ffa95445442d4f9ae99d37",
+        "faed6e03133ff7f2862da53bbf77731c411c480c15a602a71080fc38c1f3e08b"
+      ]
+    },
+    {
+      "seq": 4,
+      "event_id": "01a071a0-0067-7710-994b-c3c71a8b0e86",
+      "kind": "STEP_RESULT",
+      "saga_id": "sg_skeleton_0001",
+      "step_id": "st_summarise",
+      "segment_id": 1,
+      "leaf_index": 3,
+      "tree_size": 6,
+      "chain_hash": "3c3c2ee8e96bc44dc7ce1305e72c539416f02c31de9fd1d61913e6ae7b64899b",
+      "merkle_proof": [
+        "7ba4b3914ea805bde38f5327b115eb9820f9d6df61db08cdb39dc07e15aaa902",
+        "2df506977c05217d8a0941e4a2c40b79078bac9820ffa95445442d4f9ae99d37",
+        "faed6e03133ff7f2862da53bbf77731c411c480c15a602a71080fc38c1f3e08b"
+      ]
+    },
+    {
+      "seq": 5,
+      "event_id": "01a071a0-006b-7728-8ab8-654587a886db",
+      "kind": "SEAL_REQUEST",
+      "saga_id": "sg_skeleton_0001",
+      "segment_id": 1,
+      "leaf_index": 4,
+      "tree_size": 6,
+      "chain_hash": "26ddfbcc079108a96ae1b79fd006d3c454159ece213405b90323acfa071c216b",
+      "merkle_proof": [
+        "5f54fb343b3d80008f2c2502c7a6e7959ea9b7fb65a15cabf333d96d89f2d8d6",
+        "f9eedc07743c8cde1bfbadb468f9a4c5afee408b2fce748f52f4d0cd321d9b96"
+      ]
+    },
+    {
+      "seq": 6,
+      "event_id": "01a071a0-006f-75d4-aedd-fa219319ee48",
+      "kind": "COMMIT",
+      "saga_id": "sg_skeleton_0001",
+      "segment_id": 1,
+      "leaf_index": 5,
+      "tree_size": 6,
+      "chain_hash": "da0cde3747a828cb63412fda2f956590f1234a7606cf519597ab515a51225d0c",
+      "merkle_proof": [
+        "5a72e85448eeb6dc84bcec540ea920793365b68ea6feca3fc3811138d9e53d0b",
+        "f9eedc07743c8cde1bfbadb468f9a4c5afee408b2fce748f52f4d0cd321d9b96"
+      ]
+    }
+  ]
+}

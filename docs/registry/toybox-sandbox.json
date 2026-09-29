@@ -1,0 +1,7 @@
+{
+  "name": "toybox-sandbox/reference",
+  "actions": {
+    "echo": {},
+    "wire.send": {"deltas": {"wires_sent": 1}}
+  }
+}

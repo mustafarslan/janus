@@ -1,0 +1,38 @@
+{
+  "id": "ss1-23",
+  "framework": "Bank of England PRA SS1/23 — model risk management",
+  "jurisdiction": "UK",
+  "version": "0.1.0",
+  "source": "PRA Supervisory Statement SS1/23",
+  "articles": [
+    {
+      "id": "P1.2",
+      "title": "Model inventory: a complete record of models in use, with ownership",
+      "requires": [
+        "every_active_manifest_is_signed",
+        "every_participant_declares_a_risk_tier",
+        "every_agent_identifies_its_model"
+      ],
+      "note": "The registry is the inventory. This checks each entry is attributable and tiered; whether the inventory is complete cannot be checked from inside — a model nobody registered is invisible here by construction. An inventory that cannot name the model is a list of participants, so every active AGENT must declare a model id; TOOL, SYSTEM, HUMAN and VALIDATOR participants are not asked, because they run no model and a finding nobody can act on is how a report stops being read. A deployment with no registered agents reports UNKNOWN rather than satisfied: an inventory of nothing is an answer to a different question."
+    },
+    {
+      "id": "P2.1",
+      "title": "Model risk tiering proportionate to materiality",
+      "requires": [
+        "every_participant_declares_a_risk_tier"
+      ],
+      "note": "Checks a tier is declared, not that it is the right tier. Whether a tier matches the materiality of what the model does is a judgement this cannot make."
+    },
+    {
+      "id": "P4.3",
+      "title": "Controls: limits on model output, with human review where appropriate",
+      "requires": [
+        "every_irreversible_class_is_covered_by_policy",
+        "irreversible_effects_require_a_human",
+        "human_gates_enforce_separation_of_duty",
+        "irreversible_actions_declare_limits"
+      ],
+      "note": "The gate policy is the control. This checks the controls exist and are not self-approvable; whether they are set at the right thresholds is a judgement for the second line. Limits are also read directly from the registry: an irreversible action that declares no cap on magnitude or rate is reported, because P4.3 asks for limits on output and an unbounded irreversible action has none. `Manifest.validate` accepts such an action — it checks a limits block only if one is present — so this is a real gap rather than a restatement of what admission already refuses. What is checked is that a limit is declared, not that the number is the right number, which is a judgement about the business and not a property of this registry."
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "seed_hex": "6a616e75732d63616c6c65727369672d746573742d766563746f722d73656564",
+  "public_key": "ed25519:3088e403e1810775b88dd39c67058494bfedf920f64a6520430c4deb73040b19",
+  "vectors": [
+    {
+      "kind": "answer",
+      "message": {
+        "saga_id": "sg_1",
+        "step_id": "disburse",
+        "requirement_id": "credit-opinion",
+        "attempt": 1,
+        "actor": {
+          "participant": {
+            "id": "ag_credit_policy"
+          }
+        },
+        "verdict": "VERDICT_FAIL",
+        "reason": "amount_minor=2500000 exceeds the mandate",
+        "roles": [
+          "b-role",
+          "a-role"
+        ]
+      },
+      "canonical_hex": "31353a6a616e75732f616e737765722f76313b343a73675f313b383a64697362757273653b31343a6372656469742d6f70696e696f6e3b313a313b31363a61675f6372656469745f706f6c6963793b303a3b31323a564552444943545f4641494c3b34303a616d6f756e745f6d696e6f723d32353030303030206578636565647320746865206d616e646174653b313a323b363a622d726f6c653b363a612d726f6c653b303a3b",
+      "signature_hex": "c8cfe2d76ac00ae2bc31b90cf70b14e1416fadf87f026df607a877bf1fd7a31616f2c1c29270c9b62df3e77b5fa3b519a7dfd4bec13805d6187a934a829f7605"
+    },
+    {
+      "kind": "result",
+      "message": {
+        "saga_id": "sg_1",
+        "step_id": "balance",
+        "outcome": {
+          "status": "STATUS_OK",
+          "code": "READ",
+          "message": "ok; really"
+        },
+        "result_hash": "3q0=",
+        "result_ref": "cas:x",
+        "touches": [
+          {
+            "resource_id": "acct_2",
+            "mode": "MODE_READ"
+          },
+          {
+            "resource_id": "acct_1",
+            "mode": "MODE_WRITE",
+            "frontier_seq": "7"
+          }
+        ],
+        "attempt": 2,
+        "facts": [
+          {
+            "key": "z_flag",
+            "flag": true
+          },
+          {
+            "key": "balance_minor",
+            "number": "-5"
+          },
+          {
+            "key": "ccy",
+            "text": "EUR:1;2"
+          }
+        ]
+      },
+      "canonical_hex": "31353a6a616e75732f726573756c742f76313b343a73675f313b373a62616c616e63653b313a323b393a5354415455535f4f4b3b343a524541443b31303a6f6b3b207265616c6c793b343a646561643b353a6361733a783b313a333b31333a62616c616e63655f6d696e6f723b363a6e756d6265723b323a2d353b333a6363793b343a746578743b373a4555523a313b323b363a7a5f666c61673b343a666c61673b343a747275653b313a323b363a616363745f313b31303a4d4f44455f57524954453b313a373b363a616363745f323b393a4d4f44455f524541443b313a303b",
+      "signature_hex": "68204be1996d5ae61187fecd4fb1a1a1e976be3297e7157c9476acb289f9c5f9508b04da1d7427e19b7fc39130579b19ab9a9d637020e25d68e908cfd37bb70a"
+    },
+    {
+      "kind": "prepare",
+      "message": {
+        "saga_id": "sg_1",
+        "step_id": "disburse",
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "100"
+          }
+        ],
+        "spawns": {
+          "saga_id": "sg_kid",
+          "commit_mode": "CHILD_COMMIT_MODE_CASCADE"
+        }
+      },
+      "canonical_hex": "31363a6a616e75732f707265706172652f76313b343a73675f313b383a64697362757273653b313a313b31323a616d6f756e745f6d696e6f723b363a6e756d6265723b333a3130303b363a73675f6b69643b32353a4348494c445f434f4d4d49545f4d4f44455f434153434144453b",
+      "signature_hex": "f21f2ea0b365a52789fa5dee36114eadb342c9aa412edb13c872fa2f8b4e003768621dc3b09a5977f800331c9c4fbf3560aa86745b97fd94c07148973b12d905"
+    },
+    {
+      "kind": "begin",
+      "message": {
+        "saga_id": "sg_1",
+        "intent": {
+          "intent_id": "in_1",
+          "principal": "pr_bank",
+          "originator": "sdk:python",
+          "mandate_ref": "mandate:loans",
+          "scope": "one loan",
+          "expires_at_unix_nanos": "1790000000000000000"
+        },
+        "plan": [
+          {
+            "step_id": "disburse",
+            "participant": "tool_payments",
+            "action": "payments.disburse",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "depends_on": [
+              "underwrite"
+            ],
+            "compensation_action": "payments.refund",
+            "max_retries": 2
+          }
+        ],
+        "manifest_pins": {
+          "ag_intake": "1.0.0",
+          "tool_payments": "1.0.0"
+        },
+        "mode": "supervised"
+      },
+      "canonical_hex": "31343a6a616e75732f626567696e2f76313b343a73675f313b343a696e5f313b373a70725f62616e6b3b31303a73646b3a707974686f6e3b31333a6d616e646174653a6c6f616e733b383a6f6e65206c6f616e3b31393a313739303030303030303030303030303030303b31303a737570657276697365643b303a3b303a3b32393a4348494c445f434f4d4d49545f4d4f44455f554e5350454349464945443b313a313b383a64697362757273653b31333a746f6f6c5f7061796d656e74733b31373a7061796d656e74732e64697362757273653b32343a4546464543545f434c4153535f434f4d50454e5341424c453b313a313b31303a756e64657277726974653b31353a7061796d656e74732e726566756e643b313a323b313a323b393a61675f696e74616b653b353a312e302e303b31333a746f6f6c5f7061796d656e74733b353a312e302e303b",
+      "signature_hex": "27d9f31732dfaa9b04875b5a7998f915ad283d4bacc1425f15ede92dd8d5d03edf2a23a32037870980183a11a933e19ece367fed2fe3f3f9f53826db48e9b702"
+    }
+  ]
+}

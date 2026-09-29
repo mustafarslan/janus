@@ -1,0 +1,97 @@
+{
+  "name": "02-gated-effect-commit",
+  "description": "an effectful step waits for a gate before sealing, then commits",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "pay",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "compensation_action": "pay.undo"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay",
+        "outcome": {
+          "status": "STATUS_OK"
+        },
+        "touches": [
+          {
+            "resource_id": "acct:1",
+            "mode": "MODE_WRITE"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay",
+        "gate": "GATE_TYPE_POLICY",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "SEAL_REQUEST",
+      "payload": {
+        "saga_id": "sg",
+        "frontiers": [
+          {
+            "resource_id": "acct:1",
+            "last_sealed_seq": "3"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "COMMIT",
+      "payload": {
+        "saga_id": "sg"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMMITTED",
+    "last_seq": 6,
+    "event_count": 6,
+    "frontiers": {
+      "acct:1": 3
+    },
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "pay",
+        "status": "COMMITTED",
+        "attempt": 1,
+        "outcome": "OK",
+        "touches": [
+          "acct:1:W@3"
+        ],
+        "gate": "PASS via POLICY"
+      }
+    ]
+  }
+}

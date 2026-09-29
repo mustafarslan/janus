@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package janus.v1;
+
+import "janus/v1/common.proto";
+
+option go_package = "github.com/mustafarslan/janus/gen/go/janus/v1;janusv1";
+
+// The registry vocabulary.
+//
+// A participant declares what it can do, what each action does to the world,
+// and how each action can be taken back. That declaration is a manifest, and
+// every saga pins the exact version of it that governed each step.
+//
+// The registry is not a database that happens to be backed up. Every mutation
+// below is an event in the same hash-chained log as everything else, and the
+// registry's state is a projection of those events — rebuildable, replayable,
+// and auditable by somebody who does not trust the service that wrote it.
+// "Which manifest was this payment made under?" is
+// a question about history, and a mutable row cannot answer it.
+
+// RegistryEvent is one recorded mutation of the participant registry.
+//
+// The manifest itself travels in KIND_REGISTERED as the exact canonical bytes
+// that were hashed and signed. Recording a re-serialisation instead would mean
+// the signature covered something the log does not hold, and a manifest that
+// cannot be reconstructed byte for byte cannot be checked years later.
+message RegistryEvent {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // REGISTERED enters a manifest version as DRAFT. It carries the manifest.
+    KIND_REGISTERED = 1;
+    // EVALUATED attaches conformance evidence: the declared
+    // compensations were executed against sandbox doubles, the idempotency
+    // recipes survived duplicate delivery, and the limits refused what they
+    // claim to refuse.
+    KIND_EVALUATED = 2;
+    KIND_ACTIVATED = 3;
+    KIND_SUSPENDED = 4;
+    KIND_RETIRED = 5;
+    // REVALIDATION_REQUIRED records that a change to a manifest fired a
+    // trigger the previous version declared, so the new version cannot inherit
+    // the evidence that cleared its predecessor (PRA SS1/23).
+    KIND_REVALIDATION_REQUIRED = 6;
+  }
+  Kind kind = 1;
+
+  string participant_id = 2;
+  // version is the version the manifest declares, e.g. "3.2.1". It is what a
+  // saga pins and what a ParticipantRef carries.
+  string version = 3;
+  // content_address is "blake3:" + hex over the canonical encoding of the
+  // manifest. Two registrations of one version with different content
+  // addresses is the failure that makes pinning decorative, so it is recorded
+  // on every event rather than only on registration.
+  string content_address = 4;
+
+  // manifest is the canonical CBOR of the manifest document, present on
+  // KIND_REGISTERED.
+  bytes manifest = 5;
+  // signature is the principal's signature over the manifest bytes, present on
+  // KIND_REGISTERED.
+  ManifestSignature signature = 6;
+  // evaluation is the conformance result, present on KIND_EVALUATED.
+  EvaluationReport evaluation = 7;
+  // change describes what a superseding registration changed, present on
+  // KIND_REGISTERED when a predecessor exists and on KIND_REVALIDATION_REQUIRED.
+  ChangeRecord change = 8;
+
+  // reason is why a human-driven transition happened — suspension in
+  // particular, where "why" is the whole content of the event.
+  string reason = 9;
+  Actor by = 10;
+
+  // template is the canonical CBOR of a saga template, present on
+  // KIND_REGISTERED instead of `manifest`.
+  //
+  // A template travels through the same event stream and the same lifecycle as
+  // a participant manifest — registered, evaluated, activated, suspended —
+  // because a template is registered as its own manifest: what a crystallized
+  // saga needs from a template is exactly what a saga needs from a manifest,
+  // which is a version that can be pinned, evidence that it was validated, and
+  // the ability to withdraw it between one saga and the next.
+  //
+  // Exactly one of `manifest` and `template` is set. `participant_id` carries
+  // the template id when this is a template, because every event in this stream
+  // is keyed by it and splitting the key would mean two streams.
+  bytes template = 11;
+}
+
+// ManifestSignature is a signature over the canonical manifest bytes.
+//
+// The keys a manifest declares in its own identity section cannot establish
+// this: anybody can generate a key and write it into a document. The verifying
+// side supplies the keys it trusts for a principal out of band, the same way an
+// auditor running janus-verify supplies the writer keys separately from the
+// artifact.
+message ManifestSignature {
+  string key_id = 1;
+  bytes signature = 2;
+  // principal is the legal entity the signing key speaks for, so a trust store
+  // can be keyed by something other than the key id alone.
+  string principal = 3;
+}
+
+// EvaluationReport is the outcome of running a manifest's claims against
+// sandbox doubles.
+//
+// Registration is not paperwork. A participant claiming REVERSIBLE has to
+// demonstrate the inverse operation; a claim that survives no test is a claim
+// the registry has agreed to repeat rather than one it has checked.
+message EvaluationReport {
+  bool passed = 1;
+
+  message Check {
+    string action = 1;
+    // name identifies what was tested: compensation_restores,
+    // compensation_runs, idempotency, limits.
+    string name = 2;
+    bool passed = 3;
+    // skipped marks a claim the sandbox cannot test — an irreversible action
+    // has no inverse to demonstrate. It is recorded rather than omitted so the
+    // report says what it did not check.
+    bool skipped = 4;
+    string detail = 5;
+  }
+  repeated Check checks = 2;
+
+  // harness_version identifies the code that produced this verdict, because a
+  // conformance result is only as meaningful as the harness that reached it.
+  string harness_version = 3;
+  // sandbox identifies the doubles the claims were exercised against.
+  string sandbox = 4;
+  // triggers_covered names the revalidation triggers this evaluation answers.
+  // An evaluation that predates a model change does not clear that change.
+  repeated string triggers_covered = 5;
+  // inherited_from names the predecessor version whose evaluation this one
+  // carries forward, set when a change fired no revalidation trigger. It is an
+  // event rather than an implicit rule so that "this version was never
+  // separately evaluated" stays visible in the record.
+  string inherited_from = 6;
+  string evidence_bundle_ref = 7;
+}
+
+// ChangeRecord says what one manifest version changed relative to its
+// predecessor, and which revalidation triggers that fired.
+message ChangeRecord {
+  string from_version = 1;
+  // changed names the fields that differ, e.g. "runtime.model_id",
+  // "actions.payments.create.effect_class".
+  repeated string changed = 2;
+  // triggers_fired are the predecessor's declared revalidation triggers that
+  // this change matched.
+  repeated string triggers_fired = 3;
+}

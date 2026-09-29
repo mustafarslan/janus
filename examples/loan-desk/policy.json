@@ -1,0 +1,26 @@
+{
+  "id": "janus.loan-desk",
+  "rules": [
+    {
+      "id": "money-needs-a-second-opinion",
+      "match": {"effect_classes": ["COMPENSABLE", "REVERSIBLE"]},
+      "require": [{
+        "id": "credit-opinion",
+        "gate": "VALIDATOR",
+        "phase": "PRE_RELEASE",
+        "validator": {"validators": ["ag_credit_policy"], "quorum": 1}
+      }]
+    },
+    {
+      "id": "nothing-irreversible-unapproved",
+      "match": {"effect_classes": ["IRREVERSIBLE_GATED"]},
+      "require": [{
+        "id": "notify-approval",
+        "gate": "POLICY",
+        "phase": "PRE_RELEASE",
+        "policy": {"expr": "approved == true",
+                   "description": "an irreversible notice goes out only on an approved loan"}
+      }]
+    }
+  ]
+}

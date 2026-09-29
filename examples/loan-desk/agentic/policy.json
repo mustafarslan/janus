@@ -1,0 +1,41 @@
+{
+  "id": "janus.loan-desk-agentic",
+  "rules": [
+    {
+      "id": "money-moves-on-a-published-approval-and-the-mandate",
+      "match": {"effect_classes": ["COMPENSABLE"]},
+      "require": [
+        {
+          "id": "underwriter-approved",
+          "gate": "POLICY",
+          "phase": "PRE_EXECUTION",
+          "policy": {
+            "expr": "result.underwrite.approved == true",
+            "description": "the underwriting model recommended approval, as a finding its own step published; the paying step cannot state it"
+          }
+        },
+        {
+          "id": "credit-opinion",
+          "gate": "VALIDATOR",
+          "phase": "PRE_EXECUTION",
+          "validator": {"validators": ["ag_credit_policy"], "quorum": 1}
+        }
+      ]
+    },
+    {
+      "id": "nothing-irreversible-without-the-approval",
+      "match": {"effect_classes": ["IRREVERSIBLE_IMMEDIATE"]},
+      "require": [
+        {
+          "id": "notify-approval",
+          "gate": "POLICY",
+          "phase": "PRE_EXECUTION",
+          "policy": {
+            "expr": "result.underwrite.approved == true",
+            "description": "an irreversible notice goes out only on an approval the underwriter published"
+          }
+        }
+      ]
+    }
+  ]
+}

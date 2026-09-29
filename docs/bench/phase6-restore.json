@@ -1,0 +1,52 @@
+{
+  "measured_at": "2026-09-13T15:13:14.702747+00:00",
+  "size": {
+    "events": 200000,
+    "log_bytes": 59870470,
+    "segments": 4
+  },
+  "backup_ns": 337985000,
+  "restore": {
+    "phases": [
+      {
+        "name": "verify_manifest_signature",
+        "took_ns": 265625
+      },
+      {
+        "name": "check_target",
+        "took_ns": 63458
+      },
+      {
+        "name": "copy_segments",
+        "took_ns": 73128791
+      },
+      {
+        "name": "check_manifest_contiguity",
+        "took_ns": 167
+      }
+    ],
+    "total_ns": 73458041
+  },
+  "window_ns": 453398458,
+  "window_events_verified": 200001,
+  "rebuild": {
+    "head": 200001,
+    "kept": 200000,
+    "phases": {
+      "apply_ns": 120715417,
+      "commit_ns": 2878757709,
+      "fold_ns": 3376015791,
+      "read_ns": 319167666,
+      "residual_ns": 57374999
+    },
+    "scanned": 200001,
+    "statements": {
+      "clear": 133344,
+      "saga": 66672,
+      "step": 66672,
+      "total": 266689,
+      "touch": 0
+    },
+    "took_ns": 3398867916
+  }
+}

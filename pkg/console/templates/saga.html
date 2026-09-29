@@ -1,0 +1,108 @@
+{{define "saga.html"}}{{template "head" .}}
+{{$s := .Data}}
+<h1>{{$s.SagaID}} <span class="tag {{if eq $s.Status "QUARANTINE"}}bad{{else if eq $s.Status "COMMITTED"}}ok{{end}}">{{$s.Status}}</span></h1>
+<p class="lede">
+  {{$s.Done}} of {{$s.Steps}} step(s) settled{{if $s.Waiting}}, <span class="warn">{{$s.Waiting}} waiting</span>{{end}}.
+  {{if $s.Reason}}<br><span class="bad">{{$s.Reason}}</span>{{end}}
+</p>
+
+<div class="card">
+  <h3>why this saga exists</h3>
+  <dl class="kv">
+    <dt>intent</dt><dd>{{$s.IntentID}}</dd>
+    <dt>principal</dt><dd>{{$s.Principal}}</dd>
+    {{if $s.Originator}}<dt>originator</dt><dd>{{$s.Originator}}</dd>{{end}}
+    {{if $s.MandateRef}}<dt>mandate</dt><dd>{{$s.MandateRef}}</dd>{{end}}
+    {{if $s.Scope}}<dt>scope</dt><dd>{{$s.Scope}}</dd>{{end}}
+    {{if $s.Mode}}<dt>mode</dt><dd>{{$s.Mode}}</dd>{{end}}
+    {{if $s.PolicyVersion}}<dt>gate policy</dt><dd class="dim">{{$s.PolicyVersion}}</dd>{{end}}
+    {{if $s.Parent}}<dt>parent</dt><dd><a href="/sagas/{{$s.Parent}}">{{$s.Parent}}</a></dd>{{end}}
+  </dl>
+</div>
+
+{{if $s.Pins}}
+<h2>participants, as the registry stood when this saga began</h2>
+<table>
+  <tr><th>participant</th><th>manifest</th><th>state then</th></tr>
+  {{range $s.Pins}}
+  <tr>
+    <td>{{.Participant}}</td>
+    <td>{{.Version}}</td>
+    <td>{{if .Unresolved}}<span class="bad">not registered — nothing says what this participant was declared to do (I8)</span>{{else}}<span class="tag">{{.State}}</span>{{end}}</td>
+  </tr>
+  {{end}}
+</table>
+{{end}}
+
+<h2>steps</h2>
+{{range $s.Steps}}
+<div class="card">
+  <h3>{{.StepID}} <span class="tag">{{.Status}}</span> <span class="tag">{{.EffectClass}}</span></h3>
+  <dl class="kv">
+    <dt>action</dt><dd>{{.Action}} on {{.Participant}}{{if .Manifest}}@{{.Manifest}}{{end}}</dd>
+    {{if .DependsOn}}<dt>after</dt><dd>{{join .DependsOn ", "}}</dd>{{end}}
+    <dt>attempt</dt><dd>{{.Attempt}}{{if .MaxRetries}} of {{.MaxRetries}} allowed{{end}}</dd>
+    {{if .Compensation}}<dt>undo</dt><dd>{{.Compensation}}{{if .CompState}} <span class="tag">{{.CompState}}</span>{{end}}</dd>{{end}}
+    {{if .Child}}<dt>delegated to</dt><dd><a href="/sagas/{{.Child}}">{{.Child}}</a> <span class="tag">{{.ChildMode}}</span></dd>{{end}}
+    {{if .Verdict}}<dt>last verdict</dt><dd><span class="tag {{if eq .Verdict "FAIL"}}bad{{else if eq .Verdict "ESCALATE"}}warn{{else}}ok{{end}}">{{.Verdict}}</span> {{.Reason}}</dd>{{end}}
+  </dl>
+
+  {{if .Facts}}<p class="dim">declared: {{range $k, $v := .Facts}}{{$k}}={{$v}} {{end}}</p>{{end}}
+  {{if .Published}}<p class="dim">published: {{range $k, $v := .Published}}{{$k}}={{$v}} {{end}}</p>{{end}}
+
+  {{if .Gates}}
+  <table>
+    <tr><th>gate</th><th>phase</th><th>asks for</th><th>standing</th></tr>
+    {{range .Gates}}
+    <tr>
+      <td>{{.RequirementID}}<br><span class="tag">{{.Gate}}</span></td>
+      <td class="dim">{{.Phase}}</td>
+      <td>{{.Detail}}</td>
+      <td>
+        {{if .Verdict}}<span class="tag {{if eq .Verdict "FAIL"}}bad{{else if eq .Verdict "ESCALATE"}}warn{{else}}ok{{end}}">{{.Verdict}}</span>{{end}}
+        {{.Reason}}
+        {{range .Answers}}<br><span class="dim">{{.Actor}} — {{.Verdict}}{{if .Roles}} as {{join .Roles ", "}}{{end}}{{if .Reason}}: {{.Reason}}{{end}} (seq {{.Seq}})</span>{{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{end}}
+
+  {{if .Effects}}
+  <table>
+    <tr><th>effect</th><th>state</th><th>target</th><th>idempotency key</th><th>attempts</th></tr>
+    {{range .Effects}}
+    <tr>
+      <td>{{.EffectID}}</td>
+      <td><span class="tag {{if eq .State "QUARANTINED"}}bad{{else if eq .State "DELIVERED"}}ok{{end}}">{{.State}}</span>{{if .Reason}}<br><span class="dim">{{.Reason}}</span>{{end}}</td>
+      <td>{{.Target}}{{if .Action}} · {{.Action}}{{end}}</td>
+      <td class="dim">{{.IdemKey}}</td>
+      <td class="num">{{.Attempts}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{end}}
+
+  {{if .Touches}}
+  <p class="dim">touched: {{range .Touches}}{{.ResourceID}} ({{.Mode}} @{{.Seq}}) {{end}}</p>
+  {{end}}
+</div>
+{{end}}
+
+{{if $s.Frontiers}}
+<h2>frontiers claimed at seal</h2>
+<table>
+  <tr><th>resource</th><th class="num">watermark</th></tr>
+  {{range $r, $seq := $s.Frontiers}}<tr><td>{{$r}}</td><td class="num">{{$seq}}</td></tr>{{end}}
+</table>
+{{end}}
+
+{{if $s.Outstanding}}
+<div class="card">
+  <h3 class="bad">still in the world</h3>
+  <p>These steps' effects were not undone when the saga froze: {{join $s.Outstanding ", "}}.</p>
+</div>
+{{end}}
+
+<p><a href="/search?saga={{$s.SagaID}}">every event this saga wrote →</a></p>
+{{template "foot" .}}{{end}}

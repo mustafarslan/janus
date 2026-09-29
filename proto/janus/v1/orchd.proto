@@ -1,0 +1,632 @@
+syntax = "proto3";
+
+package janus.v1;
+
+import "janus/v1/common.proto";
+import "janus/v1/evidence.proto";
+import "janus/v1/gate.proto";
+import "janus/v1/jtp.proto";
+import "janus/v1/outbox.proto";
+
+option go_package = "github.com/mustafarslan/janus/gen/go/janus/v1;janusv1";
+
+// The service boundary.
+//
+// One process owns an evidence directory, so everything that needs to
+// append to one — an SDK starting a saga, an MCP proxy turning a tool call into
+// a step, a console recording an approval — has to ask that process rather than
+// open the log itself. This file is what they ask.
+//
+// The request and response types are wrappers. The payloads inside them are the
+// JTP messages already used as evidence-log records: a SagaBegin sent here is
+// byte-for-byte the SagaBegin that lands in the log. That is the point —
+// one grammar for wire and record — and it is why there is no separate "API
+// model" here to drift from the evidence.
+//
+// What this service does NOT offer is a shortcut. Every effectful operation
+// still goes through gate admission, the registry, the outbox and the log in
+// the same order a single-process coordinator would take. A service is a
+// tempting place to put a fast path; there is not one, and an RPC that skipped
+// a gate would be indistinguishable in the log from an attack.
+service OrchestratorService {
+  // BeginSaga admits a plan and records it. Admission is against the gate
+  // policy AND the registry: a step whose declared effect class differs from
+  // its registered manifest is refused here rather than at the effect.
+  rpc BeginSaga(BeginSagaRequest) returns (BeginSagaResponse);
+
+  // PrepareStep advances the saga and hands the caller the step it is expected
+  // to run. It is a request, not an instruction: the coordinator decides
+  // whether the step may be prepared, and a step whose pre-execution gate has
+  // not passed comes back refused with the reason.
+  rpc PrepareStep(PrepareStepRequest) returns (PrepareStepResponse);
+
+  // CompleteStep reports what a participant did. The response is sent only
+  // after the result is durable — an acknowledgement before the append would
+  // be the service claiming evidence that does not exist.
+  rpc CompleteStep(CompleteStepRequest) returns (CompleteStepResponse);
+
+  // RecordAnswer records a validator's or a human's answer to a gate. This is
+  // why a console no longer has to wait for a coordinator to let go of the
+  // log.
+  rpc RecordAnswer(RecordAnswerRequest) returns (RecordAnswerResponse);
+
+  // RegisterCredential enrols a WebAuthn authenticator for a person, so that a
+  // gate requiring a step-up has something to verify against.
+  //
+  // Deliberately narrower than "record an identity trust event". Trusting an
+  // OIDC issuer key is not offered here and never should be: a caller that
+  // could add a trusted issuer could mint tokens establishing any role it
+  // liked, which is a larger authority than anything else in this service
+  // grants. Issuer trust is an operator action, out of band.
+  //
+  // Registering a credential is bounded by comparison. A credential alone
+  // establishes nothing — verification requires the credential's subject to
+  // match the subject of a verified ID token — so a rogue registration is
+  // useless without a token for that person, which this service cannot produce.
+  rpc RegisterCredential(RegisterCredentialRequest) returns (RegisterCredentialResponse);
+
+  // RevokeCredential withdraws an authenticator that has been lost or stolen.
+  //
+  // It is here rather than on the console, and that placement is the whole
+  // decision. A page that can revoke a credential from a session is a page a
+  // stolen session can use to remove the control it is about to bypass, so the
+  // console offers no revoke button and never should. This is the operator
+  // plane: reaching it means reaching the daemon's address, which a browser
+  // session does not.
+  //
+  // Revocation is not the inverse of registration in one respect worth naming:
+  // an approval given before the revocation stays valid, because it was valid
+  // when it was given. `FoldTrustUntil` is what re-verification uses, and
+  // treating a later revocation as retroactive would rewrite history every time
+  // somebody lost a laptop.
+  rpc RevokeCredential(RevokeCredentialRequest) returns (RevokeCredentialResponse);
+
+  // RevokeIssuerKey withdraws one signing key of one OIDC issuer.
+  //
+  // Trusting an issuer is NOT here and must not be. Whoever can add a trusted
+  // issuer can mint a token establishing any role, which is a larger authority
+  // than anything else this service grants, so it stays configuration read from
+  // the daemon's own command line where a session cannot reach it
+  // (janus-orchd -issuer-jwks).
+  //
+  // Revocation is the opposite direction and that asymmetry is the reason it is
+  // allowed through the wire: it removes authority rather than granting it, and
+  // a deployment that has just learned an issuer key is compromised should not
+  // have to schedule a restart to stop honouring it. The same reasoning put
+  // RevokeCredential here while registration stayed narrower.
+  //
+  // Not retroactive, for the reason RevokeCredential is not: an approval given
+  // before the revocation was valid when it was given, and `FoldTrustUntil` is
+  // what re-verification folds. Treating this as retroactive would invalidate
+  // every approval an issuer ever established each time it rotated a key.
+  rpc RevokeIssuerKey(RevokeIssuerKeyRequest) returns (RevokeIssuerKeyResponse);
+
+  // The replication surface: three read-only calls that let a follower mirror
+  // this daemon's evidence directory.
+  //
+  // Read-only, and deliberately so. A follower asks for bytes and is told what
+  // has been acknowledged; it cannot write, cannot promote anything, and cannot
+  // ask this daemon to stop being the writer. Promotion is an operator act on
+  // the *replica* (6i), not something a primary can be talked into.
+  //
+  // Three unary calls rather than one server-driven stream. The stream would be
+  // fewer round trips and is not built, because the round trips have not been
+  // measured — and because these three are exactly the interface the follower's
+  // rules were established against, so the transport carries a shape that is
+  // already tested rather than inventing a second one.
+
+  // ReplicationHead reports what this daemon has durably acknowledged.
+  //
+  // The chain hash is not decoration: a follower compares it against its own at
+  // the same sequence, so a primary that served a different log is caught rather
+  // than copied. A response stating a sequence with no chain is refused by the
+  // follower.
+  rpc ReplicationHead(ReplicationHeadRequest) returns (ReplicationHeadResponse);
+
+  // ReplicationSegments lists this daemon's segment ids, ascending.
+  //
+  // Every file, including one created ahead of a rotation and not yet written
+  // to. Filtering here would be the primary deciding what the follower may see,
+  // and rule three — a cursor may only pass a *sealed* segment — is the
+  // follower's to enforce.
+  rpc ReplicationSegments(ReplicationSegmentsRequest) returns (ReplicationSegmentsResponse);
+
+  // ReplicationRead returns a slice of one segment as this daemon currently has
+  // it, with that segment's current length.
+  //
+  // The length is what lets a follower notice its own copy is *longer* — which
+  // means this daemon crashed and recovery truncated a torn tail the follower
+  // had already copied.
+  rpc ReplicationRead(ReplicationReadRequest) returns (ReplicationReadResponse);
+
+  // HoldEffect withholds an effect until its saga commits.
+  rpc HoldEffect(HoldEffectRequest) returns (HoldEffectResponse);
+
+  // ReleaseEffects delivers what a committed saga was holding. It is safe to
+  // call on a saga that has not committed: the outbox refuses, and the refusal
+  // is the invariant working rather than an error to route around.
+  rpc ReleaseEffects(ReleaseEffectsRequest) returns (ReleaseEffectsResponse);
+
+  // ResolveParticipant returns what a pinned manifest version declares.
+  //
+  // It exists for one job: letting a client check its own declarations against
+  // the registry before it starts a saga. An SDK that declares a step as PURE
+  // when the manifest says the action moves money should find out when it
+  // connects, not at admission and certainly not at a gate.
+  //
+  // It is not a discovery API. One pinned version in, its actions out — no
+  // listing, no search, no "what participants exist". That surface is not
+  // built and belongs with the AgentCard projection.
+  //
+  // **Nothing may gate on this response.** The daemon re-checks every plan
+  // against the registry at admission, from the log, and that check is the
+  // enforcement. This is a courtesy that fails fast; a caller that treated it
+  // as permission would be trusting a value it was handed.
+  rpc ResolveParticipant(ResolveParticipantRequest) returns (ResolveParticipantResponse);
+
+  // GetSaga returns the projection. It is derived from the log on demand, so
+  // two callers asking at the same sequence get the same answer.
+  rpc GetSaga(GetSagaRequest) returns (GetSagaResponse);
+
+  // DeliverEffects is how a process that can reach a target lends the outbox
+  // the ability to reach it.
+  //
+  // The stream runs the other way round from every other method here: the
+  // client opens it, declares which targets it serves, and then waits to be
+  // told what to deliver. That direction is deliberate. Invariant I1 requires
+  // EFFECT_RELEASING to be appended durably *before* the delivery is attempted,
+  // and only this process can append — so the decision to deliver, the ordering
+  // around it, the retry budget and the poisoning all stay here. A client that
+  // claimed effects and delivered them on its own initiative would have taken
+  // custody of the one ordering the whole outbox exists to guarantee.
+  //
+  // A disconnected deliverer is therefore not a silent hold: the target simply
+  // has no deliverer, which the outbox already refuses on, loudly, with the
+  // effect still held and still retryable.
+  rpc DeliverEffects(stream DeliverEffectsRequest) returns (stream DeliverEffectsResponse);
+
+  // WatchSagas streams projections as they change.
+  //
+  // It exists so a client does not have to poll to notice that a gate was
+  // answered or a participant is wanted. It carries last_seq on every message
+  // for the same reason the Phase 6 projections will: a stream can drop, and a
+  // consumer that cannot say where it got to has to start again.
+  rpc WatchSagas(WatchSagasRequest) returns (stream WatchSagasResponse);
+}
+
+// EvidenceRef locates one appended record.
+//
+// It is returned by every write so a caller can cite the evidence for what it
+// just did rather than assert it. The chain hash is included because the
+// sequence number alone identifies a position, not a content — and it is the
+// content an auditor re-derives.
+message EvidenceRef {
+  string event_id = 1;
+  uint64 seq = 2;
+  uint64 segment_id = 3;
+  bytes chain_hash = 4;
+  uint64 hlc = 5;
+}
+
+message BeginSagaRequest {
+  SagaBegin begin = 1;
+  // signature is a plan participant's signature over the saga it begins, by
+  // one whose manifest names the intent's principal.
+  ParticipantSignature signature = 2;
+}
+
+message BeginSagaResponse {
+  string saga_id = 1;
+  EvidenceRef ref = 2;
+}
+
+message PrepareStepRequest {
+  string saga_id = 1;
+  string step_id = 2;
+  // facts the participant declares it will act on — the arguments it is
+  // proposing, which the step's pre-execution gate decides against.
+  //
+  // They are sent with the request to prepare rather than with the result,
+  // because the order is the guarantee: a step is judged on what it said it
+  // would do, and then does exactly that. A participant that could declare
+  // after the fact would be describing a payment it had already made.
+  repeated Fact facts = 3;
+  // spawns declares that this step delegates its work to a sub-saga.
+  //
+  // It travels with the declaration for the same reason the facts do: the
+  // delegation is bound into the prepare record, and a step that announced it
+  // afterwards would be describing work it had already handed off. The commit
+  // mode is declared here and not negotiated later, because a parent delegating
+  // work is making a promise about what it can still take back and that promise
+  // has to be admissible before any effect happens.
+  ChildSaga spawns = 4;
+  // signature is the step's participant's signature over this declaration.
+  ParticipantSignature signature = 5;
+}
+
+message PrepareStepResponse {
+  // prepare is the record the coordinator appended, and is set only when the
+  // step is now the caller's to run.
+  StepPrepare prepare = 1;
+  EvidenceRef ref = 2;
+
+  // status says why the caller has not been handed the step, when it has not.
+  // A step held at a gate and a step whose dependencies have not sealed are
+  // both "not yet", and an SDK that could not tell them apart would retry the
+  // one that needs a human.
+  PrepareStatus status = 3;
+  string reason = 4;
+
+  // attempt is the attempt number this preparation belongs to. The participant
+  // has to send it back with the result: without it a retry of attempt 2 and a
+  // duplicate report of attempt 1 are the same message, and only one of them
+  // may be recorded.
+  //
+  // It is here rather than in StepPrepare because the record does not carry it
+  // — the log derives the attempt from the sequence of prepares — and a client
+  // cannot derive anything from a log it is not allowed to read.
+  uint32 attempt = 5;
+}
+
+enum PrepareStatus {
+  PREPARE_STATUS_UNSPECIFIED = 0;
+  // PREPARED means the step is the caller's to run now.
+  PREPARE_STATUS_PREPARED = 1;
+  // PREPARE_STATUS_GATED means a gate has to decide, or somebody has to
+  // answer one, before this step can be prepared.
+  PREPARE_STATUS_GATED = 2;
+  // PREPARE_STATUS_NOT_READY means the step's dependencies have not sealed.
+  PREPARE_STATUS_NOT_READY = 3;
+  // PREPARE_STATUS_UNAVAILABLE means the step will never be prepared: the saga
+  // is unwinding, terminal, or the step is already done.
+  PREPARE_STATUS_UNAVAILABLE = 4;
+}
+
+message CompleteStepRequest {
+  // result carries the saga id, step id and attempt it is reporting on. The
+  // attempt is not optional: a retry and a duplicate report of the previous
+  // attempt look identical without it, and one of the two must be refused.
+  StepResult result = 1;
+  // provenance is why the step produced what it did: for a step an agent
+  // decided, the model, how it was sampled, what it output and on what
+  // grounds. It is recorded immediately before the result, under the same
+  // durability barrier, and the result cites it by event id
+  // (StepResult.dpr_ref), so the "why" of an agent's step is on the record
+  // with the step rather than beside it.
+  //
+  // The daemon stamps its identity — dpr_id, saga_id, step_id — from the
+  // result rather than trusting them, and refuses a decision kind that is not
+  // a participant's to record: VALIDATE is the gate's own.
+  DecisionProvenanceRecord provenance = 2;
+}
+
+message CompleteStepResponse {
+  EvidenceRef ref = 1;
+  // already_recorded means this exact attempt had already been reported and
+  // the request changed nothing. It is a success — a participant that retries
+  // after a timeout it never saw the answer to must not be told it failed.
+  bool already_recorded = 2;
+}
+
+message RecordAnswerRequest {
+  GateAnswer answer = 1;
+}
+
+message RecordAnswerResponse {
+  EvidenceRef ref = 1;
+}
+
+message RegisterCredentialRequest {
+  // credential_id is the WebAuthn credential id, as the browser reported it.
+  string credential_id = 1;
+  // subject is the person the credential belongs to. It comes from whatever
+  // authenticated them, never from a form: a page that could name its own
+  // subject could enrol an authenticator for somebody else.
+  string subject = 2;
+  // public_key is the credential's public key, SPKI DER — what
+  // AuthenticatorAttestationResponse.getPublicKey() returns.
+  bytes public_key = 3;
+}
+
+message RegisterCredentialResponse {
+  EvidenceRef ref = 1;
+}
+
+message RevokeCredentialRequest {
+  // credential_id is the credential to withdraw.
+  string credential_id = 1;
+  // reason is why, and it is required. A revocation with no reason is a record
+  // an auditor cannot act on: "lost laptop" and "employee left" call for
+  // different follow-up, and the difference is not recoverable later.
+  string reason = 2;
+}
+
+message RevokeCredentialResponse {
+  EvidenceRef ref = 1;
+}
+
+message RevokeIssuerKeyRequest {
+  // issuer is the OIDC issuer, as it appears in a token's "iss" claim.
+  string issuer = 1;
+  // key_id is the "kid" of the key to withdraw. One key, not the whole issuer:
+  // an issuer rotating a compromised key keeps working on its other keys, and
+  // an operator who meant to distrust the issuer entirely can say so key by key
+  // rather than have one command mean both.
+  string key_id = 2;
+  // reason is why, and it is required. Without one a reader cannot tell a
+  // routine rotation from a compromise, and those call for opposite responses
+  // to every approval the key ever verified.
+  string reason = 3;
+}
+
+message RevokeIssuerKeyResponse {
+  EvidenceRef ref = 1;
+}
+
+message ReplicationHeadRequest {}
+
+message ReplicationHeadResponse {
+  // seq is the highest sequence this daemon has durably acknowledged.
+  uint64 seq = 1;
+  // chain is the chain hash at that sequence, raw bytes.
+  bytes chain = 2;
+}
+
+message ReplicationSegmentsRequest {}
+
+message ReplicationSegmentsResponse {
+  repeated uint64 segment_ids = 1;
+}
+
+message ReplicationReadRequest {
+  uint64 segment_id = 1;
+  int64 offset = 2;
+  // max_bytes bounds one response. The server caps it further.
+  uint32 max_bytes = 3;
+}
+
+message ReplicationReadResponse {
+  // data is the segment's contents from offset. Empty means there is nothing
+  // more at that offset yet, which is the ordinary state of a caught-up
+  // follower rather than an error.
+  bytes data = 1;
+  // segment_length is this daemon's current size of the whole segment.
+  int64 segment_length = 2;
+}
+
+message HoldEffectRequest {
+  EffectHeld effect = 1;
+}
+
+message HoldEffectResponse {
+  EvidenceRef ref = 1;
+  // already_held means this effect id was already captured and the request
+  // changed nothing. It is a success, for the same reason already_recorded is:
+  // a client that retried after a timeout it never saw the answer to is doing
+  // the right thing, and holding the same effect twice would put two claims on
+  // one payment.
+  bool already_held = 2;
+}
+
+message ReleaseEffectsRequest {
+  string saga_id = 1;
+}
+
+message ReleaseEffectsResponse {
+  uint32 released = 1;
+}
+
+message GetSagaRequest {
+  string saga_id = 1;
+}
+
+message GetSagaResponse {
+  SagaProjection saga = 1;
+}
+
+message WatchSagasRequest {
+  // saga_ids limits the stream. Empty means every saga this process owns.
+  repeated string saga_ids = 1;
+}
+
+message WatchSagasResponse {
+  SagaProjection saga = 1;
+}
+
+// SagaProjection is the saga as the log says it stands.
+//
+// It is deliberately lossy: it carries what a client has to decide on, not
+// everything the projection holds. A caller that needs the whole truth reads
+// the log, which is the only place the whole truth is. The same rule the
+// registry's AgentCard follows applies here — nothing may
+// make a gating decision from this message.
+message SagaProjection {
+  string saga_id = 1;
+  SagaState status = 2;
+  Intent intent = 3;
+  repeated StepProjection steps = 4;
+  // last_seq is the log position this projection was folded to. It is what
+  // makes the value comparable between two reads and resumable after a
+  // dropped stream.
+  uint64 last_seq = 5;
+  string abort_reason = 6;
+  string quarantine_reason = 7;
+}
+
+message StepProjection {
+  string step_id = 1;
+  string participant = 2;
+  string action = 3;
+  EffectClass effect_class = 4;
+  StepState status = 5;
+  uint32 attempt = 6;
+  repeated string depends_on = 7;
+  // awaiting_participant is true when this step is the participant's turn:
+  // either to declare it and have it prepared, or to report the result of one
+  // already prepared. The status says which — PLANNED means call PrepareStep,
+  // PREPARED means call CompleteStep.
+  //
+  // It is one field rather than two because it answers one question, the only
+  // one a client polling for work is asking: is there something here for me. It
+  // is stated rather than inferred because neither status answers it alone —
+  // PLANNED says nothing about whether the step's dependencies have sealed, and
+  // PREPARED reads the same whether the participant is about to answer or died
+  // an hour ago.
+  bool awaiting_participant = 8;
+  // waiting_on_gate names the requirement holding this step, when one is.
+  string waiting_on_gate = 9;
+  // pending_gates are the requirements holding this step that somebody outside
+  // Janus has to answer, with enough to answer them.
+  //
+  // Before this, a client was told only *that* a step was waiting and a
+  // sentence of prose. A validator could not act on that: it did not know
+  // which requirement was outstanding, which attempt the answer belonged to,
+  // or whether it was one of the participants named to answer it. So a gate
+  // decided outside Janus could only be answered by something that had read
+  // the log — which is the one thing a client of this service does not do.
+  //
+  // Only external, unresolved requirements appear. A schema check that will
+  // resolve itself is not something anybody is waiting to be asked about, and
+  // listing it would put items in a queue that nobody can clear.
+  repeated PendingGate pending_gates = 11;
+
+  // awaiting_compensation is true when this step's undo has been prepared and
+  // the coordinator is waiting for whoever runs it.
+  //
+  // It is a separate field from awaiting_participant because it is a separate
+  // call to a separate action, and because the step's own status still reads
+  // as whatever it was when it succeeded. A client that could not see this
+  // would leave every unwinding saga stuck, with the projection showing a
+  // sealed step and nothing to do.
+  bool awaiting_compensation = 10;
+}
+
+// DeliverEffectsRequest is what a deliverer sends: first its registration, then
+// a receipt for each effect it was asked to deliver.
+message DeliverEffectsRequest {
+  oneof message {
+    DelivererRegistration register = 1;
+    DeliveryReceipt receipt = 2;
+  }
+}
+
+message DelivererRegistration {
+  // targets this deliverer can reach. Registering for a target that another
+  // stream already serves is refused rather than silently taking it over: two
+  // processes delivering one target is how an effect goes out twice.
+  repeated string targets = 1;
+}
+
+// DeliveryReceipt is what the target said, relayed back.
+//
+// It carries the same distinctions the outbox already turns on, because the
+// outbox is what acts on it: duplicate is a success and a different one from
+// having applied it now, and retryable separates a target that is temporarily
+// unable from one that has refused.
+message DeliveryReceipt {
+  string effect_id = 1;
+  string ref = 2;
+  bytes hash = 3;
+  bool duplicate = 4;
+  bool retryable = 5;
+  string message = 6;
+  // error is set when the deliverer could not reach the target at all, as
+  // opposed to reaching it and being told no.
+  string error = 7;
+}
+
+// DeliverEffectsResponse is one effect to deliver.
+//
+// It names the effect rather than carrying its payload, for the same reason the
+// log does: the payload is content-addressed and the deliverer is the process
+// that already holds it. What is here is what the target needs to recognise a
+// repeat — the idempotency key — and what an auditor needs to tie this delivery
+// to the record that authorised it.
+message DeliverEffectsResponse {
+  string effect_id = 1;
+  string saga_id = 2;
+  string step_id = 3;
+  string target = 4;
+  string action = 5;
+  string idem_key = 6;
+  EffectClass effect_class = 7;
+  bytes payload_hash = 8;
+  string payload_ref = 9;
+  // attempt is how many times this effect may already have reached the target,
+  // not how many times it was delivered successfully. After a crash mid-attempt
+  // Janus knows an attempt was made and cannot know whether it landed, so this
+  // is the honest number and it is the one a deliverer needs in order to be
+  // careful.
+  uint32 attempt = 10;
+}
+
+// PendingGate is one requirement waiting on somebody outside Janus.
+message PendingGate {
+  string requirement_id = 1;
+  GateType gate = 2;
+  GatePhase phase = 3;
+  // attempt is the attempt this decision belongs to, and an answer has to name
+  // it. A gate answered for the wrong attempt is an opinion about a decision
+  // that was already made.
+  uint32 attempt = 4;
+  // answerable_by names who may answer: the validator participants for a
+  // VALIDATOR gate, the roles for a HUMAN gate. It is what lets a connected
+  // participant decide whether the question is for it, without having to read
+  // the policy the saga was admitted under.
+  repeated string answerable_by = 5;
+  // quorum is how many distinct answers the requirement needs. One answer to a
+  // gate that wants two is not a refusal to be retried; it is a wait that is
+  // not over, and a caller that could not tell the difference would either give
+  // up or answer twice.
+  uint32 quorum = 6;
+  // detail describes what the requirement asks for, in one line.
+  string detail = 7;
+  // reason is why it is outstanding as of this projection.
+  string reason = 8;
+  // answers_recorded is how many answers this requirement already has for this
+  // attempt.
+  //
+  // It is the difference between "answer this" and "answer this as somebody who
+  // has not answered it yet". A quorum is satisfied by distinct parties — the
+  // state machine refuses the same one asked twice — so a client with several
+  // parties to answer as has to know which of them is still owed. Deriving it
+  // from the projection rather than remembering it is also what lets a client
+  // that was killed mid-quorum resume without re-answering as a party whose
+  // approval is already on the record.
+  uint32 answers_recorded = 9;
+  // facts is what the question is about: the fact set this requirement is
+  // decided on, exactly as an expression gate would see it — what the step
+  // proposed (the pinned proposal before it runs, what it prepared on at
+  // release), what Janus derives from the saga's record, and what earlier
+  // steps published. An answer is bound to these; a question that
+  // did not carry them asked a validator to approve with the numbers blanked
+  // out.
+  repeated Fact facts = 10;
+}
+
+message ResolveParticipantRequest {
+  string participant_id = 1;
+  // version is the pinned version, and it is required. Resolving "whatever is
+  // active now" would answer a different question from the one a saga asks: a
+  // saga pins a version, and what matters is what *that* version declares.
+  string version = 2;
+}
+
+message ResolveParticipantResponse {
+  string participant_id = 1;
+  string version = 2;
+  // state is the lifecycle state of this version. A suspended or retired
+  // version still declares what it declares, and a client checking its own
+  // declarations wants to know both.
+  string state = 3;
+  repeated DeclaredAction actions = 4;
+}
+
+// DeclaredAction is one action a manifest declares.
+message DeclaredAction {
+  string name = 1;
+  EffectClass effect_class = 2;
+  // compensation_action is the inverse the manifest names, empty when the
+  // class declares none.
+  string compensation_action = 3;
+}

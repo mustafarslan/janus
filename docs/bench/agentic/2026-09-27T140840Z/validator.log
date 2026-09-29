@@ -1,0 +1,25 @@
+validator watching 100 sagas on host.docker.internal:7951
+answered credit-opinion on sg_ag_app_02/disburse: pass
+answered credit-opinion on sg_ag_app_03/disburse: pass
+answered credit-opinion on sg_ag_app_04/disburse: pass
+answered credit-opinion on sg_ag_app_08/disburse: pass
+answered credit-opinion on sg_ag_app_11/disburse: pass
+answered credit-opinion on sg_ag_app_16/disburse: pass
+answered credit-opinion on sg_ag_app_30/disburse: fail
+answered credit-opinion on sg_ag_app_35/disburse: fail
+answered credit-opinion on sg_ag_app_36/disburse: fail
+answered credit-opinion on sg_ag_app_02_r0/disburse: pass
+answered credit-opinion on sg_ag_app_02_r1/disburse: pass
+answered credit-opinion on sg_ag_app_02_r2/disburse: pass
+answered credit-opinion on sg_ag_app_02_r3/disburse: pass
+answered credit-opinion on sg_ag_app_02_r4/disburse: pass
+answered credit-opinion on sg_ag_app_03_r0/disburse: pass
+answered credit-opinion on sg_ag_app_03_r1/disburse: pass
+answered credit-opinion on sg_ag_app_03_r2/disburse: pass
+answered credit-opinion on sg_ag_app_03_r3/disburse: pass
+answered credit-opinion on sg_ag_app_03_r4/disburse: pass
+answered credit-opinion on sg_ag_app_04_r0/disburse: pass
+answered credit-opinion on sg_ag_app_04_r1/disburse: pass
+answered credit-opinion on sg_ag_app_04_r2/disburse: pass
+answered credit-opinion on sg_ag_app_04_r3/disburse: pass
+answered credit-opinion on sg_ag_app_04_r4/disburse: pass

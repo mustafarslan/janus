@@ -1,0 +1,117 @@
+{
+  "version": "1.0.0",
+  "identity": {
+    "participant_id": "tool_payments",
+    "kind": "TOOL",
+    "principal": "pr_bank_x",
+    "public_keys": []
+  },
+  "runtime": {
+    "model_id": "none",
+    "prompt_bundle_hash": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "policy_bundle_version": "janus.reference",
+    "framework": "none",
+    "sbom_ref": "cas://sbom/tool_payments/1.0.0"
+  },
+  "actions": [
+    {
+      "name": "balance.read",
+      "effect_class": "PURE"
+    },
+    {
+      "name": "payments.hold",
+      "effect_class": "REVERSIBLE",
+      "compensation": {
+        "action": "payments.release",
+        "param_map": {"hold_id": "hold_id"},
+        "max_delay_seconds": 604800
+      },
+      "idempotency": {
+        "key_recipe": "account,amount_minor,intent_id",
+        "window_seconds": 2592000
+      }
+    },
+    {
+      "name": "payments.release",
+      "effect_class": "REVERSIBLE",
+      "compensation": {
+        "action": "payments.hold",
+        "param_map": {"hold_id": "hold_id"}
+      },
+      "idempotency": {
+        "key_recipe": "hold_id",
+        "window_seconds": 2592000
+      }
+    },
+    {
+      "name": "payments.wire",
+      "effect_class": "COMPENSABLE",
+      "compensation": {
+        "action": "payments.refund",
+        "param_map": {"account": "account", "amount_minor": "amount_minor"},
+        "max_delay_seconds": 259200,
+        "residual_effects": "the statement line remains, and the counterparty has seen the credit"
+      },
+      "idempotency": {
+        "key_recipe": "account,amount_minor,intent_id",
+        "window_seconds": 2592000
+      },
+      "limits": {
+        "max_amount": 1000000,
+        "amount_field": "amount_minor",
+        "currency": "EUR",
+        "rate_per_hour": 100
+      }
+    },
+    {
+      "name": "payments.refund",
+      "effect_class": "REVERSIBLE",
+      "compensation": {
+        "action": "payments.wire",
+        "param_map": {"account": "account", "amount_minor": "amount_minor"}
+      },
+      "idempotency": {
+        "key_recipe": "account,amount_minor,intent_id",
+        "window_seconds": 2592000
+      }
+    },
+    {
+      "name": "payments.wire.large",
+      "effect_class": "IRREVERSIBLE_GATED",
+      "idempotency": {
+        "key_recipe": "account,amount_minor,intent_id",
+        "window_seconds": 7776000
+      },
+      "limits": {
+        "max_amount": 50000000,
+        "amount_field": "amount_minor",
+        "currency": "EUR"
+      }
+    },
+    {
+      "name": "notify.email",
+      "effect_class": "IRREVERSIBLE_GATED",
+      "idempotency": {
+        "key_recipe": "recipient,subject,intent_id",
+        "window_seconds": 2592000
+      }
+    }
+  ],
+  "risk": {
+    "tier": 1,
+    "validation_evidence": [],
+    "revalidation_triggers": [
+      "model_change",
+      "prompt_change",
+      "policy_change",
+      "action_change",
+      "limit_change",
+      "periodic"
+    ]
+  },
+  "jurisdiction": {
+    "deployable_in": ["EU"],
+    "data_residency": "EU",
+    "filings": []
+  }
+}

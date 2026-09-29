@@ -1,0 +1,142 @@
+{
+  "name": "04-failed-compensation-quarantine",
+  "description": "a compensation fails, so the saga freezes rather than leaving a hole in the undo",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "pay",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "compensation_action": "pay.undo"
+          },
+          {
+            "step_id": "book",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "depends_on": [
+              "pay"
+            ],
+            "compensation_action": "book.undo"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book"
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 7,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 8,
+      "kind": "COMPENSATE",
+      "payload": {
+        "saga_id": "sg"
+      }
+    },
+    {
+      "seq": 9,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book~undo",
+        "compensates": "book"
+      }
+    },
+    {
+      "seq": 10,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book~undo",
+        "outcome": {
+          "status": "STATUS_TERMINAL_ERROR"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "QUARANTINE",
+    "last_seq": 10,
+    "event_count": 10,
+    "quarantine_reason": "compensation of \"book\" failed; 2 step(s) still have effects in the world",
+    "outstanding": [
+      "pay",
+      "book"
+    ],
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "pay",
+        "status": "SEALED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "REQUIRED",
+        "gate": "PASS via UNSPECIFIED"
+      },
+      {
+        "id": "book",
+        "status": "FAILED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "FAILED",
+        "compensated_by": "book~undo",
+        "gate": "PASS via UNSPECIFIED"
+      }
+    ]
+  }
+}

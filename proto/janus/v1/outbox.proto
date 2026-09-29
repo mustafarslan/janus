@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package janus.v1;
+
+import "janus/v1/common.proto";
+
+option go_package = "github.com/mustafarslan/janus/gen/go/janus/v1;janusv1";
+
+// The outbox vocabulary.
+//
+// An IRREVERSIBLE_GATED effect is one that cannot be undone but can be delayed:
+// a wire transfer, a regulatory filing, an outbound email. Janus does not
+// perform such an effect when the step runs. It captures it, holds it, and
+// releases it only once the saga has committed — which is the difference
+// between an agent that can be stopped and one that cannot.
+//
+// The four records below are that lifecycle. They are evidence rather than
+// queue state because the question they answer — did this effect fire, and on
+// whose authority? — has to be answerable from the log alone, long after the
+// process that made the decision has gone.
+
+// EffectHeld records an irreversible effect that has been captured and withheld.
+//
+// This is appended before the step reports its result. A step that sealed while
+// its effect existed only in memory would let a saga commit on the strength of
+// an effect nobody was holding, and a crash in that window would lose it with
+// the log showing a clean commit.
+message EffectHeld {
+  string effect_id = 1;
+  string saga_id = 2;
+  string step_id = 3;
+  // target names the participant or endpoint that will receive the effect. It
+  // is also the unit a circuit breaker opens on.
+  string target = 4;
+  string action = 5;
+  // idem_key is derived from the participant manifest's recipe, so that a
+  // retried delivery is recognisable to the receiver as the same effect.
+  // At-least-once delivery plus receiver idempotency is what makes the release
+  // effectively exactly-once; neither half is sufficient alone.
+  string idem_key = 6;
+  bytes payload_hash = 7;
+  string payload_ref = 8;
+  EffectClass effect_class = 9;
+}
+
+// EffectReleasing is the barrier record: the intention to attempt a delivery,
+// written and made durable before anything leaves the building.
+//
+// The ordering it enforces is the whole of invariant I1. Appending the receipt
+// first would mean a crash could leave the log claiming an effect was delivered
+// when it never left; delivering first would mean an effect existed in the
+// world with no evidence that anything authorised it. Announcing the attempt,
+// durably, and only then acting, is the only order in which every outcome of a
+// crash is recoverable.
+message EffectReleasing {
+  string effect_id = 1;
+  string saga_id = 2;
+  uint32 attempt = 3;
+  // commit_root is the evidence root of the saga commit that authorises this
+  // release, copied here so the authority is legible on the release record
+  // itself rather than only by cross-referencing.
+  bytes commit_root = 4;
+  string idem_key = 5;
+}
+
+// EffectDelivered is the receipt. Its outcome distinguishes a delivery the
+// target accepted from one it rejected, because a rejection is a fact about the
+// effect rather than an error in Janus.
+message EffectDelivered {
+  string effect_id = 1;
+  string saga_id = 2;
+  uint32 attempt = 3;
+  Outcome outcome = 4;
+  string receipt_ref = 5;
+  bytes receipt_hash = 6;
+  // duplicate is set when the target recognised the idempotency key and
+  // reported that it had already applied this effect. That is a success, and
+  // recording it separately is what lets an operator tell a retry that was
+  // absorbed from a delivery that happened once.
+  bool duplicate = 7;
+}
+
+// EffectQuarantined freezes an effect that could not be delivered.
+//
+// Janus stops rather than continuing to retry. An irreversible effect that will
+// not go through is a fact about the world that a human has to reconcile, and
+// an unbounded retry loop against a target that is refusing is how a duplicate
+// payment eventually happens.
+message EffectQuarantined {
+  string effect_id = 1;
+  string saga_id = 2;
+  uint32 attempts = 3;
+  string reason = 4;
+  // last_error is what the target said on the final attempt.
+  string last_error = 5;
+}

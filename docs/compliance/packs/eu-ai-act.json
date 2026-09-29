@@ -1,0 +1,37 @@
+{
+  "id": "eu-ai-act",
+  "framework": "EU Artificial Intelligence Act",
+  "jurisdiction": "EU",
+  "version": "0.1.0",
+  "source": "Regulation (EU) 2024/1689",
+  "articles": [
+    {
+      "id": "Art.12",
+      "title": "Record-keeping: automatic recording of events over the lifetime of the system",
+      "requires": ["every_active_manifest_is_signed", "every_participant_declares_a_risk_tier"],
+      "note": "This mapping covers whether participants are declared and attributable at all. Whether the events themselves were recorded is not a lint question — it is answered by janus-verify over a log and by janus-conformance over a run."
+    },
+    {
+      "id": "Art.14",
+      "title": "Human oversight: measures enabling a person to intervene or interrupt",
+      "requires": [
+        "every_effectful_action_can_be_undone_or_is_gated",
+        "every_irreversible_class_is_covered_by_policy",
+        "irreversible_effects_require_a_human"
+      ],
+      "note": "Read strictly: an effect nobody can take back needs a person, not merely a rule. An action that declares itself reversible and names no inverse is a broken declaration rather than an oversight measure."
+    },
+    {
+      "id": "Art.14(4)(d)",
+      "title": "Human oversight: the person may decide not to use the system, or to disregard, override or reverse the output",
+      "requires": ["human_gates_enforce_separation_of_duty"],
+      "note": "An approval by the person who raised the request is not an independent decision, so separation of duty is what makes the override real. Whether the approver's role claim was established rather than asserted is out of scope here."
+    },
+    {
+      "id": "Art.49",
+      "title": "Registration: high-risk systems are registered before being placed on the market",
+      "requires": ["every_participant_declares_jurisdiction", "every_participant_declares_a_risk_tier"],
+      "note": "Covers what the registry holds about each participant. It does not check any filing was made to any authority; nothing in this repository talks to one."
+    }
+  ]
+}

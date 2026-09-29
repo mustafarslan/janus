@@ -1,0 +1,82 @@
+\section{System Model, Threats and Invariants}
+\label{sec:model}
+
+\subsection{Parties}
+A \emph{saga} is one unit of agent work: a plan of steps, each a named action on
+a registered \emph{participant} (an agent, a tool, a validator), with a declared
+\emph{effect class}: \code{PURE}, \code{REVERSIBLE}, \code{COMPENSABLE} (has a
+registered compensating action), \code{IRREVERSIBLE\_GATED} (an effect the
+outbox can hold) or \code{IRREVERSIBLE\_IMMEDIATE} (in the world as soon as the
+participant returns). One \emph{writer} process, the daemon
+\code{janus-orchd}, owns an evidence log and hosts the saga engine; agents,
+consoles and interception proxies are its clients. \emph{Answerers}---validator
+processes and people---decide the gates the engine cannot decide itself. An
+\emph{auditor} holds a copy of the log (or an exported bundle) and the writer's
+public key, and nothing else.
+
+\subsection{Threats in scope}
+\begin{itemize}
+\item \textbf{After-the-fact tampering} with any record by anyone without the
+  writer's signing key, including deletion, insertion and reordering. Cutting
+  records off the \emph{end} of a bundle is detected when its manifest is signed,
+  which an auditor can require (\code{-require-signed-manifest}), or against a
+  head obtained out of band; an unsigned bundle verified without either reads as
+  a shorter log.
+\item \textbf{A gated agent authoring its own permission}: stating the approval,
+  balance or recommendation a gate decides on, moving an approval it received
+  onto a different proposal (\cref{sec:findings}), or recording an answer, a
+  declaration or a result under another participant's name or a person's.
+\item \textbf{Prompt injection} that makes a model \emph{want} an out-of-policy
+  effect. Janus does not try to stop the wanting; it bounds what the wanting can
+  release.
+\item \textbf{A crash anywhere}: the writer, the coordinator or a participant
+  killed between any two records, including between an approval and the decision
+  it permits.
+\end{itemize}
+
+\subsection{Out of scope, stated}
+\label{sec:model-out}
+\begin{itemize}
+\item \textbf{Participants without keys, and calls that record nothing.} A
+  participant whose manifest declares no key is taken at its word unless the
+  daemon requires every caller to sign; replication, operator and read-only
+  calls are not authenticated, and the channel is not encrypted.
+\item \textbf{A writer-key holder writing a consistent false history.} Segment
+  signatures prove who wrote a log, not that it is the only log that writer
+  produced. External anchoring of log heads is designed but not built; today an
+  auditor can pin an expected head obtained out of band (\code{-expect-head}).
+\item \textbf{Semantic fidelity of a declaration.} A gate decides on the amount a
+  step \emph{declares}. If a model extracts 4{,}000 from a request for 40{,}000,
+  every gate here judges 4{,}000 (\cref{sec:eval-model}).
+\item \textbf{Byzantine replicas} and multi-writer consensus: a follower that
+  diverges is detected and attributed; a lease fences a superseded writer; neither
+  tolerates a malicious one.
+\item \textbf{Clients that ignore a refusal} on the SDK path (\cref{sec:design-edges}).
+\end{itemize}
+
+\subsection{Invariants}
+\Cref{tab:invariants} lists the eight invariants and where each is enforced.
+They are checked by property tests, by crash-injection suites that kill the
+writer at every transition, and by an adversarial ``evil auditor'' suite that
+performs each tampering attack for real.
+
+\begin{table}[t]
+\caption{Invariants and where they are enforced}
+\label{tab:invariants}
+\centering\footnotesize
+\begin{tabular}{@{}p{0.9cm}p{3.1cm}p{3.6cm}@{}}
+\toprule
+& Invariant & Enforced by \\
+\midrule
+I1 & Evidence before effect: no release without a durable chained append & the outbox writes \code{RELEASING} durably before delivering \\
+I2 & Chain integrity: any byte mutation is detected & segment format; the offline verifier \\
+I3 & Compensation closure: every non-\code{PURE} step has a compensation or a gate & gate admission \\
+I4 & Commit safety: a gated irreversible effect releases only from \code{COMMITTED}, at least once, under one idempotency key & outbox and idempotency keys \\
+I5 & Replay determinism: transitions are a pure function of the event sequence & the saga fold \\
+I6 & Frontier safety: no commit over an unsealed conflicting touch & the frontier gate, where the policy has one \\
+I7 & Compensation order: reverse-topological & the compensation planner \\
+I8 & Registry pinning: every participant version resolves at replay & registry admission \\
+\bottomrule
+\end{tabular}
+% source: pkg/outbox, pkg/evidence, pkg/gate (admission), pkg/saga (fold, compensation planner, frontier), pkg/registry
+\end{table}

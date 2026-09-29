@@ -1,0 +1,198 @@
+{
+  "name": "09-gate-failure-unwinds",
+  "description": "a gate refuses a compensable step that had already executed, so both it and the step before it are undone, in reverse order",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "pay",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "compensation_action": "pay.undo"
+          },
+          {
+            "step_id": "book",
+            "effect_class": "EFFECT_CLASS_COMPENSABLE",
+            "depends_on": [
+              "pay"
+            ],
+            "compensation_action": "book.undo"
+          }
+        ],
+        "gate_policy_version": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "gate_plan": [
+          {
+            "step_id": "book",
+            "rule_id": "bookings",
+            "require": [
+              {
+                "id": "booking-limit",
+                "gate": "GATE_TYPE_RISK_LIMIT",
+                "phase": "GATE_PHASE_PRE_RELEASE",
+                "risk_limit": {
+                  "thresholds": [
+                    {
+                      "fact": "amount_minor",
+                      "max": "100000"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay",
+        "verdict": "VERDICT_PASS"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book",
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "250000"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 6,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 7,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book",
+        "gate": "GATE_TYPE_RISK_LIMIT",
+        "verdict": "VERDICT_FAIL",
+        "reason": "amount_minor is 250000, over the limit of 100000",
+        "decided": [
+          "booking-limit"
+        ],
+        "facts": [
+          {
+            "key": "amount_minor",
+            "number": "250000"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 8,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book~undo",
+        "compensates": "book"
+      }
+    },
+    {
+      "seq": 9,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "book~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 10,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay~undo",
+        "compensates": "pay"
+      }
+    },
+    {
+      "seq": 11,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "pay~undo",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMPENSATED",
+    "last_seq": 11,
+    "event_count": 11,
+    "abort_reason": "gate GATE_TYPE_RISK_LIMIT refused: amount_minor is 250000, over the limit of 100000",
+    "gate_policy": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "pay",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "pay~undo",
+        "gate": "PASS via UNSPECIFIED"
+      },
+      {
+        "id": "book",
+        "status": "COMPENSATED",
+        "attempt": 1,
+        "outcome": "OK",
+        "compensation": "DONE",
+        "compensated_by": "book~undo",
+        "gates": [
+          "booking-limit@PRE_RELEASE"
+        ],
+        "gate": "FAIL via RISK_LIMIT",
+        "facts": [
+          "amount_minor=250000"
+        ]
+      }
+    ]
+  }
+}

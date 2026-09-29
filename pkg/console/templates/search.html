@@ -1,0 +1,43 @@
+{{define "search.html"}}{{template "head" .}}
+{{$f := .Data.Filter}}
+{{$r := .Data.Result}}
+<h1>evidence</h1>
+<p class="lede">
+  Every row below came out of the verifier, not out of a shortcut around it.
+  <span class="{{if $r.SignaturesChecked}}ok{{else}}warn{{end}}">{{$r.Integrity}}.</span>
+</p>
+
+<form class="inline" method="get" action="/search">
+  <input type="text" name="q" value="{{$f.Text}}" placeholder="anything: id, label, account" size="30">
+  <input type="text" name="saga" value="{{$f.SagaID}}" placeholder="saga id" size="18">
+  <input type="text" name="kind" value="{{$f.Kind}}" placeholder="kind, e.g. GATE_ANSWER" size="20">
+  <input type="text" name="participant" value="{{$f.Participant}}" placeholder="participant" size="16">
+  <input type="text" name="subject" value="{{$f.Subject}}" placeholder="data subject" size="16">
+  <button type="submit">search</button>
+</form>
+
+{{if $r.Findings}}
+<div class="problem">
+  <strong>the verifier has complaints about this log:</strong>
+  {{range $r.Findings}}<br>{{.}}{{end}}
+</div>
+{{end}}
+
+<p class="dim">
+  {{$r.Matched}} of {{$r.Scanned}} event(s) matched{{if $r.Truncated}}, showing the first {{len $r.Rows}}{{end}}.
+</p>
+
+<table>
+  <tr><th class="num">seq</th><th>when</th><th>kind</th><th>saga / step</th><th>participant</th><th>labels</th></tr>
+  {{range $r.Rows}}
+  <tr>
+    <td class="num dim">{{.Seq}}</td>
+    <td class="dim">{{.Wall.Format "2006-01-02 15:04:05"}}</td>
+    <td><span class="tag">{{.Kind}}</span></td>
+    <td>{{if .SagaID}}<a href="/sagas/{{.SagaID}}">{{.SagaID}}</a>{{end}}{{if .StepID}}<br><span class="dim">{{.StepID}}</span>{{end}}</td>
+    <td>{{.Participant}}{{if .Manifest}}<br><span class="dim">@{{.Manifest}}</span>{{end}}</td>
+    <td class="dim">{{if .Subject}}subject={{.Subject}} {{end}}{{range $k, $v := .Labels}}{{$k}}={{$v}} {{end}}</td>
+  </tr>
+  {{end}}
+</table>
+{{template "foot" .}}{{end}}

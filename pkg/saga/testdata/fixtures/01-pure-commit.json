@@ -1,0 +1,73 @@
+{
+  "name": "01-pure-commit",
+  "description": "the simplest complete saga: one PURE step, sealed and committed",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "intent": {
+          "intent_id": "in"
+        },
+        "plan": [
+          {
+            "step_id": "read",
+            "effect_class": "EFFECT_CLASS_PURE"
+          }
+        ],
+        "mode": "supervised"
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "STEP_PREPARE",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "read"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "STEP_RESULT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "read",
+        "outcome": {
+          "status": "STATUS_OK"
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "kind": "SEAL_REQUEST",
+      "payload": {
+        "saga_id": "sg"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "COMMIT",
+      "payload": {
+        "saga_id": "sg"
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMMITTED",
+    "mode": "supervised",
+    "intent_id": "in",
+    "last_seq": 5,
+    "event_count": 5,
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "read",
+        "status": "COMMITTED",
+        "attempt": 1,
+        "outcome": "OK"
+      }
+    ]
+  }
+}

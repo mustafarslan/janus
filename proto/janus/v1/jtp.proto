@@ -1,0 +1,293 @@
+syntax = "proto3";
+
+package janus.v1;
+
+import "janus/v1/common.proto";
+import "janus/v1/gate.proto";
+
+option go_package = "github.com/mustafarslan/janus/gen/go/janus/v1;janusv1";
+
+// The Janus Transaction Protocol core vocabulary.
+//
+// These messages are both the wire format and the evidence-log payload
+// vocabulary: one grammar for wire and record, so there is no translation
+// drift between what was sent and what was recorded. A JTP message is carried
+// as the opaque payload of an evidence event whose kind names the message.
+
+message PlannedStep {
+  string step_id = 1;
+  string participant = 2;
+  string action = 3;
+  EffectClass effect_class = 4;
+  repeated string depends_on = 5;
+  // Registered compensation action, or empty when the effect class is
+  // IRREVERSIBLE_* and a gate policy stands in for compensability.
+  string compensation_action = 6;
+  string idem_key_recipe = 7;
+
+  // timeout_nanos bounds one attempt. Zero means the coordinator's default;
+  // a step with no bound at all can hold a resource frontier forever, so there
+  // is no way to express "wait indefinitely".
+  int64 timeout_nanos = 8;
+
+  // max_retries is how many times a step may be retried after a retryable
+  // failure. Zero means no retries. Exhausting the budget makes the step
+  // poison: the saga compensates rather than looping, because a step that has
+  // failed its whole budget is unlikely to succeed on the next identical
+  // attempt and every attempt holds the saga's resources.
+  uint32 max_retries = 9;
+}
+
+// ParentSaga links a sub-saga back to the step that spawned it.
+//
+// The child records its own parentage rather than the parent alone recording
+// its children, because the child is the one whose commit has to be refused
+// when it is not authorised. A child that did not know it had a parent could
+// commit on its own and there would be no record saying it should not have.
+message ParentSaga {
+  string saga_id = 1;
+  string step_id = 2;
+  ChildCommitMode commit_mode = 3;
+}
+
+// ChildSaga declares that a step delegates its work to a sub-saga.
+message ChildSaga {
+  string saga_id = 1;
+  ChildCommitMode commit_mode = 2;
+}
+
+// TemplatePin names the template version a crystallized saga is confined to.
+//
+// Both halves are required. A pin with no version would confine the saga to
+// whatever happened to be active when it began, which is the opposite of a pin:
+// the point is that the shape a saga ran under is knowable afterwards from the
+// saga's own record.
+message TemplatePin {
+  string template_id = 1;
+  string version = 2;
+}
+
+message SagaBegin {
+  string saga_id = 1;
+  Intent intent = 2;
+  repeated PlannedStep plan = 3;
+  // participant id -> manifest version, pinned for the saga's lifetime.
+  map<string, string> manifest_pins = 4;
+  string mode = 5; // exploratory | supervised | crystallized
+  // parent is set when this saga is delegated work spawned by another saga's
+  // step. Absent means this is a root saga.
+  ParentSaga parent = 6;
+
+  // gate_policy_version is the content hash of the gate policy that produced
+  // gate_plan. It pins the decision rather than the document: the policy file
+  // can be edited, moved, or lost, and this still says exactly which bytes the
+  // saga was admitted under.
+  string gate_policy_version = 7;
+
+  // template_pin is the saga template this plan is confined to, set only in
+  // crystallized mode.
+  //
+  // Its own field rather than an entry in manifest_pins, because the two mean
+  // different things: a manifest pin names a participant whose jurisdiction and
+  // actions admission checks, and a template names a shape. Smuggling one into
+  // the other would drag templates through participant checks that have no
+  // answer for them.
+  TemplatePin template_pin = 10;
+
+  // gate_plan is the requirement list resolved for each step at admission, one
+  // entry per step that has any. A step absent from this list has no gates,
+  // which is only admissible for a PURE step or one that declares a
+  // compensation (invariant I3).
+  repeated StepGates gate_plan = 8;
+
+  // semantics_version pins the state-machine rules this saga was admitted
+  // under, so that it replays under those rules however the rules later change
+  // (the Phase 7 requirement: "old sagas must replay on new versions
+  // forever").
+  //
+  // It pins the *rules*, in the way gate_policy_version above pins the policy
+  // and manifest_pins pin the participants. Everything else a replay needs is
+  // already in the log; what was missing was which reading of it is correct. A
+  // saga admitted when a transition meant one thing must go on meaning that,
+  // and without this field a coordinator that changed the meaning would
+  // silently re-decide every history ever recorded.
+  //
+  // Absent means 1. Every saga written before this field existed ran under
+  // exactly the rules version 1 names, so the zero value is not a gap to guess
+  // at -- it is the answer.
+  uint32 semantics_version = 9;
+}
+
+message StepPrepare {
+  string saga_id = 1;
+  string step_id = 2;
+  ParticipantRef participant = 3;
+  string action = 4;
+  EffectClass effect_class = 5;
+  bytes args_hash = 6;
+  string args_ref = 7;
+  string idem_key = 8;
+
+  // compensates names the step this one undoes, when it is a compensation.
+  //
+  // Compensations are steps like any other — they are prepared, they produce a
+  // result, they pass gates, and they are evidenced. Saying which step
+  // is being undone is what lets the state machine check that they run in
+  // reverse topological order, and what lets a reader reconstruct the undo
+  // from the log rather than inferring it from naming conventions.
+  string compensates = 9;
+
+  // spawns declares that this step delegates its work to a sub-saga rather
+  // than carrying it out with a single participant call. The step does not
+  // seal until that sub-saga reports back.
+  ChildSaga spawns = 10;
+
+  // facts are the typed values this step's gates decide on, projected out of
+  // the arguments args_hash covers. See Fact in gate.proto for why they are
+  // recorded rather than read back out of the content store.
+  repeated Fact facts = 11;
+}
+
+message StepResult {
+  string saga_id = 1;
+  string step_id = 2;
+  Outcome outcome = 3;
+  bytes result_hash = 4;
+  string result_ref = 5;
+  repeated ResourceTouch touches = 6;
+  uint32 attempt = 7;
+
+  // facts this step publishes from what it found.
+  //
+  // These are the difference between a gate that constrains an agent and one
+  // that asks it nicely. A step's *declared* facts (StepPrepare.facts) are the
+  // arguments it proposes, bound to args_hash — it cannot lie about the amount
+  // it is sending. Facts about the world are a different matter: an agent that
+  // could state the account balance could state any balance, and a limit
+  // expressed as a fraction of it would constrain nothing.
+  //
+  // So a fact about external state is published by the step that went and
+  // looked. A PURE balance-read seals, its finding is on the record with its
+  // own evidence, and a later step's gate reads it under `result.<step>.<key>`
+  // — a namespace no step can declare into. The gated step never gets to say
+  // what the balance was.
+  repeated Fact facts = 8;
+
+  // dpr_ref is the event id of the decision provenance record that explains
+  // this result, recorded immediately before it, or empty when the step's
+  // participant gave none. It is to a result what GateVerdict.dpr_ref is to a
+  // verdict.
+  string dpr_ref = 9;
+  // signature is the reporting participant's signature over this result,
+  // kept in the record. Empty from a participant whose manifest
+  // declares no keys.
+  ParticipantSignature signature = 10;
+}
+
+message GateVerdict {
+  string saga_id = 1;
+  string step_id = 2;
+  GateType gate = 3;
+  Verdict verdict = 4;
+  string dpr_ref = 5;
+  string policy_version = 6;
+  Actor decided_by = 7;
+  string reason = 8;
+
+  // decided lists the requirement ids this verdict covers.
+  //
+  // It is what stops a composite PASS from being cheaper than the checks it
+  // claims to summarise. The state machine refuses a verdict that does not
+  // account for every requirement due in the phase being decided, so a
+  // coordinator cannot let a step through by evaluating the easy gates and
+  // saying nothing about the rest. It cannot detect a verdict that names every
+  // requirement and lies about the outcome — that is what re-deriving the
+  // decision from the recorded facts is for (pkg/gate audit).
+  repeated string decided = 9;
+
+  // requirement_id is set when this verdict is one check's result carried
+  // inside a DPR, and empty on the composite verdict recorded as an event.
+  string requirement_id = 10;
+
+  // facts are the values this verdict was rendered on.
+  //
+  // Carrying them makes the decision self-contained — an auditor re-deriving
+  // the verdict needs no other record — and it closes a substitution the log
+  // would otherwise not show. A gate decided before a step runs has to judge a
+  // proposal, and a proposal is only worth judging if the thing that
+  // subsequently runs is the same one: the state machine requires the step's
+  // declared facts to match what the gate was shown, so an argument cannot be
+  // swapped in the window between approval and execution.
+  repeated Fact facts = 11;
+
+  // spawns is the sub-saga the step would delegate to, on an escalation before
+  // it runs.
+  //
+  // An answerer is asked about a proposal, and a step that delegates is
+  // proposing the delegation as well as its facts: approving a payment and
+  // approving a payment handed to a sub-saga that commits on its own are not
+  // the same approval. Recorded on the escalation so the proposal is pinned on
+  // the log rather than in the memory of the daemon that happened to hold it;
+  // under semantics 3 the step's prepare must spawn what was asked about.
+  // Empty for a step that delegates nothing.
+  ChildSaga spawns = 12;
+}
+
+message FrontierClaim {
+  string resource_id = 1;
+  uint64 last_sealed_seq = 2;
+}
+
+message SealRequest {
+  string saga_id = 1;
+  repeated FrontierClaim frontiers = 2;
+}
+
+// Commit releases the outbox. evidence_root is the Merkle root proving the
+// saga's footprint was durably recorded before any irreversible effect fired
+// (invariant I1).
+message Commit {
+  string saga_id = 1;
+  bytes evidence_root = 2;
+  uint64 last_seq = 3;
+
+  // authorized_by names the parent saga whose commit permits this one, and is
+  // required for a CASCADE sub-saga.
+  //
+  // Requiring it is what makes cascade semantics enforceable rather than
+  // advisory. Without it a coordinator with a bug could commit a child on its
+  // own, releasing effects the parent had not yet authorised and might never
+  // authorise — and the log would show a perfectly ordinary commit.
+  string authorized_by = 4;
+}
+
+// Compensate opens the undo phase of a saga. The steps it names are the ones
+// whose effects have to be reversed; the order they are reversed in is derived
+// from the plan, not from this list.
+message Compensate {
+  string saga_id = 1;
+  repeated string step_ids = 2;
+  string reason_ref = 3;
+}
+
+// Quarantine freezes a saga that could not be undone.
+//
+// Janus enters this state rather than guessing, because a partially compensated
+// saga has left the world in a state nobody has described. In a bank a stuck
+// known state beats a guessed clean one: the saga is frozen with its full
+// evidence trail, a human is asked, and conflicting work on the affected
+// resources is blocked until someone decides.
+message Quarantine {
+  string saga_id = 1;
+  // FailedStep is the compensation that could not complete.
+  string failed_step = 2;
+  // Outstanding lists steps whose effects are still in the world.
+  repeated string outstanding = 3;
+  string reason = 4;
+}
+
+message Abort {
+  string saga_id = 1;
+  Actor by = 2;
+  string reason_ref = 3;
+}

@@ -1,0 +1,76 @@
+{
+  "name": "15-pre-execution-gate-refuses",
+  "description": "a gate refuses a step before it runs, so the participant is never called and there is nothing to undo",
+  "events": [
+    {
+      "seq": 1,
+      "kind": "SAGA_BEGIN",
+      "payload": {
+        "saga_id": "sg",
+        "plan": [
+          {
+            "step_id": "send",
+            "effect_class": "EFFECT_CLASS_IRREVERSIBLE_IMMEDIATE"
+          }
+        ],
+        "gate_policy_version": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "gate_plan": [
+          {
+            "step_id": "send",
+            "rule_id": "outbound",
+            "require": [
+              {
+                "id": "recipient-allowed",
+                "gate": "GATE_TYPE_POLICY",
+                "phase": "GATE_PHASE_PRE_EXECUTION",
+                "policy": {
+                  "expr": "recipient in [\"ops@example.com\"]",
+                  "description": "outbound mail may only go to a listed recipient"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "kind": "GATE_VERDICT",
+      "payload": {
+        "saga_id": "sg",
+        "step_id": "send",
+        "gate": "GATE_TYPE_POLICY",
+        "verdict": "VERDICT_FAIL",
+        "reason": "recipient is not on the list",
+        "decided": [
+          "recipient-allowed"
+        ],
+        "facts": [
+          {
+            "key": "recipient",
+            "text": "attacker@example.com"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "saga_id": "sg",
+    "status": "COMPENSATED",
+    "last_seq": 2,
+    "event_count": 2,
+    "abort_reason": "gate GATE_TYPE_POLICY refused: recipient is not on the list",
+    "gate_policy": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+    "semantics": 1,
+    "steps": [
+      {
+        "id": "send",
+        "status": "REFUSED",
+        "gates": [
+          "recipient-allowed@PRE_EXECUTION"
+        ],
+        "gate": "FAIL via POLICY"
+      }
+    ]
+  }
+}
