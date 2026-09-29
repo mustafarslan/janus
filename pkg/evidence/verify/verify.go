@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1009,11 +1010,12 @@ func checkExternalPayload(r *Report, opts Options, segID uint64, h evidence.Even
 // verifySelection re-checks each highlighted event's Merkle inclusion proof
 // against the root recomputed from the segment it claims to live in.
 func verifySelection(r *Report, dir string, m bundle.Manifest, ids []uint64, paths []string) {
-	if len(m.Selection) == 0 {
+	if len(m.Selection) == 0 && scopedSaga(m) == "" {
 		return
 	}
 	roots := map[uint64][merkle.Size]byte{}
 	sizes := map[uint64]int{}
+	records := map[uint64][]segment.Record{}
 	for i, path := range paths {
 		insp, err := segment.Inspect(path)
 		if err != nil {
@@ -1025,6 +1027,7 @@ func verifySelection(r *Report, dir string, m bundle.Manifest, ids []uint64, pat
 		}
 		roots[ids[i]] = merkle.Root(leaves)
 		sizes[ids[i]] = len(leaves)
+		records[ids[i]] = insp.Records
 	}
 
 	for _, sel := range m.Selection {
@@ -1065,6 +1068,89 @@ func verifySelection(r *Report, dir string, m bundle.Manifest, ids []uint64, pat
 		if !merkle.VerifyInclusion(merkle.HashLeaf(leafData[:]), sel.LeafIndex, sel.TreeSize, proof, root) {
 			r.addSeq(Critical, "SELECTION_PROOF_INVALID", sel.SegmentID, sel.Seq,
 				fmt.Sprintf("inclusion proof for event %s does not verify against segment %d's Merkle root", sel.EventID, sel.SegmentID))
+			continue
+		}
+		// The proof binds a chain hash to a position; it says nothing about the
+		// labels the manifest puts beside it. Without this, an unsigned bundle's
+		// list of "this saga's events" could name any event id, sequence
+		// number, saga or kind over a valid proof and still pass.
+		checkSelectionLabels(r, sel, records[sel.SegmentID])
+	}
+	checkSelectionScope(r, m, ids, records)
+}
+
+// scopedSaga is the saga a bundle was exported for, or "".
+func scopedSaga(m bundle.Manifest) string {
+	if m.Scope == nil {
+		return ""
+	}
+	return m.Scope.SagaID
+}
+
+// checkSelectionScope holds a saga-scoped bundle's selection to what the
+// exporter promises: every record in the bundled segments that belongs to the
+// saga, each once, and nothing else. The segments are in the bundle in full, so
+// an entry left out, repeated or borrowed from another saga is visible here --
+// and in an unsigned bundle nothing else would show it.
+func checkSelectionScope(r *Report, m bundle.Manifest, ids []uint64, records map[uint64][]segment.Record) {
+	saga := scopedSaga(m)
+	if saga == "" {
+		return
+	}
+	type leaf struct {
+		seg uint64
+		idx int
+	}
+	selected := map[leaf]bool{}
+	for _, sel := range m.Selection {
+		k := leaf{sel.SegmentID, sel.LeafIndex}
+		if selected[k] {
+			r.addSeq(Critical, "SELECTION_DUPLICATE", sel.SegmentID, sel.Seq,
+				fmt.Sprintf("leaf %d of segment %d is selected more than once", sel.LeafIndex, sel.SegmentID))
+		}
+		selected[k] = true
+		if sel.SagaID != saga {
+			r.addSeq(Critical, "SELECTION_OUT_OF_SCOPE", sel.SegmentID, sel.Seq,
+				fmt.Sprintf("the bundle is scoped to saga %s and selects event %s of saga %q", saga, sel.EventID, sel.SagaID))
+		}
+	}
+	for _, id := range ids {
+		for i, rec := range records[id] {
+			h, err := evidence.DecodeHeader(rec.Header)
+			if err != nil || h.SagaID != saga || selected[leaf{id, i}] {
+				continue
+			}
+			r.addSeq(Critical, "SELECTION_INCOMPLETE", id, h.Seq,
+				fmt.Sprintf("event %s of saga %s is in the bundle and missing from its selection", h.EventID, saga))
+		}
+	}
+}
+
+// checkSelectionLabels compares what a selection entry says about its event
+// with the header of the record its proof covers.
+func checkSelectionLabels(r *Report, sel bundle.Selection, recs []segment.Record) {
+	if sel.LeafIndex < 0 || sel.LeafIndex >= len(recs) {
+		r.addSeq(Critical, "SELECTION_LABEL_MISMATCH", sel.SegmentID, sel.Seq,
+			fmt.Sprintf("selected event %s claims leaf %d of a segment with %d records", sel.EventID, sel.LeafIndex, len(recs)))
+		return
+	}
+	h, err := evidence.DecodeHeader(recs[sel.LeafIndex].Header)
+	if err != nil {
+		r.addSeq(Critical, "SELECTION_LABEL_MISMATCH", sel.SegmentID, sel.Seq,
+			fmt.Sprintf("the record under selected event %s has an unreadable header: %v", sel.EventID, err))
+		return
+	}
+	for _, c := range []struct{ field, claimed, recorded string }{
+		{"event id", sel.EventID, h.EventID},
+		{"sequence number", strconv.FormatUint(sel.Seq, 10), strconv.FormatUint(h.Seq, 10)},
+		{"saga", sel.SagaID, h.SagaID},
+		{"step", sel.StepID, h.StepID},
+		{"kind", sel.Kind, string(h.Kind)},
+	} {
+		if c.claimed != c.recorded {
+			r.addSeq(Critical, "SELECTION_LABEL_MISMATCH", sel.SegmentID, sel.Seq,
+				fmt.Sprintf("selected event %s names %s %q, and the record its proof covers has %q",
+					sel.EventID, c.field, c.claimed, c.recorded))
 		}
 	}
 }
