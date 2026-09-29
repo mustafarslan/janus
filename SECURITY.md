@@ -1,28 +1,34 @@
 # Security
 
-**There is no security team.** This repository is pre-GA, private, and has one
-maintainer. Everything below says what that does and does not get you, because a
+**There is no security team.** This repository is a research prototype with one
+maintainer and no production deployment. Everything below says what that does and does not get you, because a
 `SECURITY.md` that reads like a programme and is one person is the failure this
 project exists to prevent.
 
 ## Reporting
 
-Open an issue in this repository.
+Report a vulnerability privately, through GitHub's private vulnerability
+reporting on this repository (**Security → Report a vulnerability**). A report
+there is visible only to the maintainer until an advisory is published, so a
+flaw is not disclosed by the act of reporting it.
 
-That is the whole channel, and it is adequate for exactly one reason: **the
-repository is private, so everyone who can read a report is already trusted with
-the source it describes.** There is no gap to protect between disclosure and fix,
-because there is no third party running this in production.
-
-**The day the repository goes public, this stops being true and this section is
-wrong.** A public repo needs a private channel — GitHub's private vulnerability
-reporting, which is not available on private repositories — and going public
-without changing this page publishes a "report it in the open" instruction.
+If you are reading this in a fork or a mirror where that button does not exist,
+open an issue titled "security contact requested", with no details, and a
+private channel will be given to you there. Please do not describe the flaw in
+a public issue, a pull request or a discussion.
 
 What you are **not** getting: no response-time commitment, no coordinated
 disclosure process, no embargo handling, no security advisory feed, no CVE
 assignment, no backported fix (see [SUPPORT.md](docs/SUPPORT.md) — there is one
 branch).
+
+**Supported versions.** Only `master`. A fix lands there and nowhere else.
+
+**What is not a vulnerability here.** The limits listed at the end of this file
+are the system's documented behaviour, not flaws in it: a report that one of them
+holds is not a report of a vulnerability. A report that the system is weaker than
+this file or the paper says, or that a claim under "What you can check
+yourself" is false, is exactly what the reporting channel is for.
 
 ## What you can check yourself
 
@@ -34,14 +40,15 @@ without trusting anybody here.
 and requires identical bytes; CI runs it as the `repro` job, and
 `make release-verifier` ships the checksums and the instructions to reproduce
 them. So the binary handed to an auditor can be rebuilt from source and diffed
-rather than trusted — and because it is a CI job rather than a release ritual, a
-change that breaks reproducibility fails on the commit that makes it.
+rather than trusted. It is a job in `make ci`, which runs the workflow's jobs in
+a Linux container and is what every change here is merged on; the GitHub
+workflow itself runs on demand, not on every push.
 
 **You can see what is in it, from the binary rather than from our manifest.**
 `make release-verifier` ships `janus-verify.sbom.cdx.json` — CycloneDX, generated
 from the built binary by reading the module table Go embeds in it, not
-from `go.mod`. That distinction is not pedantry: `go.mod` would list 41
-components and the binary contains 23, because this repository also holds a
+from `go.mod`. That distinction is not pedantry: `go.mod` lists 43 modules and
+the binary contains 5, because this repository also holds a
 daemon, a Postgres projection and a gRPC surface that the verifier does not link.
 You do not need the document or our word for it — `go version -m janus-verify`
 prints the same table, and `make repro` regenerates the document from two
@@ -72,9 +79,10 @@ check and not a syscall one: it proves the verifier does not *link* the usual
 ways of not being offline, which is weaker than proving it makes no network call
 and is what can actually be enforced on every commit.
 
-**And it is scanned, which is new.** `govulncheck` runs in CI in both source and
-binary mode and blocks. Binary mode reads the linked symbol table of the
-published verifier — the same check an auditor holding only that binary can run.
+**And it is scanned, which is new.** `govulncheck` runs in `make ci` in both
+source and binary mode and blocks. Binary mode reads the linked symbol table of
+the verifier as built, which is the same check an auditor holding only a
+released binary can run on it.
 **It reports zero.**
 
 **This paragraph used to carry a caveat and no longer does, which is worth
@@ -92,7 +100,8 @@ moot: **no advisory names any dependency this repository requires** — every
 finding in the first scan was the Go standard library, and the toolchain is now
 kept current in its minor line so those get fixed rather than accumulated.
 
-**The adversarial suite is runnable, and it blocks on 100%.** `make evil-auditor`
+**The adversarial suite is runnable, and fails unless it names every attack.**
+It is not part of `make ci`; run it. `make evil-auditor`
 performs the adversarial attacks for real — back-dating, forged writer
 signatures, replayed segments, shredding then claiming integrity, double-released
 effects — and asks whether the system *names* each one from the log alone. Two of
@@ -106,14 +115,29 @@ know and a half-read record looks entirely ordinary. This was found by
 measurement, not argument — a v1 build read a real v2 log silently and
 `janus-verify` printed `result: PASS`.
 
+**The auditor's second tool authenticates before it re-derives.** `janus-gate
+audit -keys pub.json <log or bundle>` verifies the log against the writer's key
+first, as `janus-verify` does, and refuses to re-derive anything from a log that
+does not verify; without `-keys` it says, on its first line, that the log was not
+authenticated. It also reports how many recorded answers and results carry no
+signature, so a log where nobody signed cannot read like one where every
+signature held. For a bundle, `janus-verify` checks that each event the manifest
+lists is the record its inclusion proof covers, and that a saga's bundle lists
+each of that saga's records once and nothing else. The seven model runs under
+`docs/bench/agentic/` pass both tools from their own directories.
+`TestTheAuditAuthenticatesTheLogBeforeReDerivingIt`,
+`TestTheAuditCountsWhatNobodySigned`,
+`TestASelectionNamesTheEventItsProofCovers` and
+`TestASagaBundleSelectsTheWholeSagaAndNothingElse` are what hold these.
+
 **The threat model is written down.** The paper's Section III
 ([`paper/sections/model.tex`](paper/sections/model.tex)) states the threats in
 scope, the ones out of scope, and the invariants each defence rests on.
 
 ## What was planned and does not exist
 
-The project's design describes a security engineering program in the present
-tense — SAST/DAST and dependency scanning "from Phase 0", fuzzing on the codecs
+The project's plan at the outset described a security engineering program in the
+present tense — SAST/DAST and dependency scanning "from Phase 0", fuzzing on the codecs
 and the verifier, an external pentest, a SOC 2 Type II track, a FIPS-mode build,
 and an SBOM with every release.
 
@@ -145,7 +169,35 @@ These are not vulnerabilities. They are places where the system's answer is
 "names it afterwards" rather than "prevents it", and an operator should know
 which is which before relying on one.
 
-- Nothing prevents two writers; a fork is detected and attributed, not fenced.
+- Without `-fence-bucket`, the default, nothing prevents two writers; with it,
+  a lease fences a superseded writer. Either way a fork is detected and
+  attributed.
+- The daemon's channel is not encrypted, and the replication, operator,
+  effect-delivery and read-only calls are not authenticated.
+- A participant whose manifest declares no key is taken at its word unless the
+  daemon runs with `-require-caller-signatures`.
+- What a signature covers is narrower than it may look: an answer's signature
+  covers its verdict, not the facts its answerer was shown, so an answerer
+  deceived about the facts approves the real proposal; a declaration's does not
+  cover its attempt, so a captured declaration can be replayed into a later
+  attempt of the same step; and a key withdrawn from a manifest still signs for
+  sagas that pinned the version declaring it.
+- A gate decides on the facts a step *declares*, not on whether they are true: a
+  model that declares 4,000 for a request of 40,000 is judged on 4,000. The log
+  records the declaration faithfully; it does not check it.
+- A holder of the writer's key can write a consistent alternative history.
+  Anchoring log heads outside Janus is not built; an auditor can pin a head
+  obtained by another route (`janus-verify -expect-head`).
+- With the fence on, a writer cut off from the lease store goes on sealing
+  until its lease expires (`-fence-ttl`, 30 seconds by default).
+- Through the Python SDK, a client that ignores a refusal is not stopped: the
+  log shows the refusal, and only the payment's own record would show that the
+  payment was made anyway. Only the MCP edge holds an effect on the wire.
+
+The paper's Section III
+([`paper/sections/model.tex`](paper/sections/model.tex)) and Section VII
+([`paper/sections/limitations.tex`](paper/sections/limitations.tex)) state these
+with the rest of what is out of scope.
 - Evidence bundles are not anchored, so a truncated *unsigned* bundle is
   invisible from inside it — `janus-verify -expect-head` catches it only if a
   head reached the reader by another route.
