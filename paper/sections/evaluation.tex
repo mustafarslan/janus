@@ -6,9 +6,12 @@ decision-path figures come from a Linux/arm64 container under Docker Desktop on
 that laptop, with \code{fsync} requested on each commit and PostgreSQL for the
 projections in a second container on the same machine; Docker Desktop's virtual
 disk may acknowledge a barrier it did not take, so these figures are not
-durability-verified. The soak and the model experiment ran natively on darwin,
-where the barrier is \code{F\_FULLFSYNC}, a device-wide flush. We give each
-number's conditions where it appears.
+durability-verified. The soak ran natively on darwin, where the barrier is
+\code{F\_FULLFSYNC}, a device-wide flush; in the model experiment
+\code{janus-orchd} ran natively with that barrier, and the agent and the
+validator in Linux containers under Docker Desktop, so the Janus time includes
+that virtual machine's network hop. We give each number's conditions where it
+appears.
 % source: docs/bench/phase0-linux-arm64.json (host cace67576b20, a container); Makefile bench-linux (docker run); docs/bench/README.md (Docker Desktop barrier warning)
 
 \subsection{RQ1: Crash consistency}
@@ -23,8 +26,8 @@ approval, a refused self-approval, two sagas contending for one resource, and a
 human gate whose deadline expires. Thirteen run in each mode: in-process
 (without the deadline scenario, which needs the daemon) it performs 144 kills
 across 144 transitions; through the daemon (without the contention scenario) it
-performs 81, and it passed again after the changes of \cref{sec:findings}.
-% source: make sagachaos ("PASS -- 144 kills across 144 transitions"), make sagachaos-hosted (81 kills); re-run 2026-09-27 (PASS)
+performs 81, and both passed again after the changes of \cref{sec:findings}.
+% source: make sagachaos ("PASS -- 144 kills across 144 transitions", make ci gate job) and make sagachaos-hosted ("PASS -- 81 kills across 81 transitions"), both re-run 2026-09-29 on the final code
 A separate soak killed the log writer with \code{SIGKILL} on a loop for 72\,h
 of cumulative chaos time: 81{,}033 kill-and-recover rounds, with zero integrity
 violations. It ran only on darwin/arm64 with \code{F\_FULLFSYNC}; it has not been
@@ -36,19 +39,19 @@ lost one acknowledged write in 40 when the primary was killed mid-stream, and
 left a log that still verifies from the original writer's key.
 % source: docs/bench/README.md; docs/bench/phase6-failover.json (rto.ms 185)
 A spot-replay daemon re-derived every saga the chaos runs of that time left
-behind---287 of 287 terminal sagas across 243 evidence directories---against the
+behind (287 of 287 terminal sagas across 243 evidence directories) against the
 evidence root each saga's own commit recorded.
 % source: docs/bench/README.md (run of 2026-08-30, with the chaos suites then at 129 in-process and 78 hosted kills)
 
 \subsection{RQ1: Offline verification}
 \label{sec:eval-verify}
-\code{janus-verify} re-verified a 100{,}000{,}001-event, 46\,GB log of 2{,}940
+\code{janus-verify} re-verified a 100{,}000{,}001-event, 46\,GiB log of 2{,}940
 segments in 254.5\,s (about 393{,}000 events/s) against a budget of 30 minutes,
 natively on the darwin laptop; the log was written without a durability barrier,
 which does not affect what verification reads.
 % source: docs/bench/phase1-100m.json (darwin/arm64, 16 cpus, segments_sealed 2940, verify_ms 254504)
-The adversarial ``evil auditor'' suite performs each tampering attack in the
-plan's list for real and requires the verifier to name it; \cref{sec:findings}
+The adversarial ``evil auditor'' suite performs each of a fixed list of
+tampering attacks for real and requires the verifier to name it; \cref{sec:findings}
 reports the one it first missed.
 
 \subsection{RQ2: What evidence on the effect path costs}
@@ -57,10 +60,10 @@ In a 150{,}000-event run the write path reached 195{,}393 events/s at a p99 of
 3.06\,ms with 256 concurrent producers and \code{fsync} requested on each commit; at 64 producers it is
 83{,}765 events/s at a p99 of 0.97\,ms, and at 1{,}024 it reaches 315{,}106
 events/s but misses a 10\,ms p99 budget.
-% source: docs/bench/README.md
+% source: docs/bench/phase0-linux-arm64.json (p99_ms 3.064792 at 256 producers; the README rounds it to 3.07)
 A throughput figure means nothing without its concurrency, and the decision path
-is the more honest measure of cost. The added latency of a gated step---from
-proposal, through the gate and the durable record, to commit---has a median of
+is the more honest measure of cost. The added latency of a gated step (from
+proposal, through the gate and the durable record, to commit) has a median of
 5.39\,ms at concurrency 1 on an empty log and 13.46\,ms at concurrency 8 with
 2{,}000 sagas in the log, against a budget of 25\,ms.
 % source: docs/bench/README.md (±2 ms spread; no network)
@@ -69,8 +72,10 @@ schema, two policy expressions and a risk limit takes 0.01--0.02\,ms at every
 load measured; the time is spent reading the log.
 % source: docs/bench/README.md
 At concurrency 64 the budget is \emph{marginal}: fourteen runs gave medians of
-22.70--26.77\,ms, seven of them over. At concurrency 256 it fails (median
-65.90\,ms), and a run at 1{,}024 exhausted the host's 16\,GiB of memory.
+22.70--26.77\,ms, seven of them over, and an earlier session's eight gave
+22.1--28.1\,ms. At concurrency 256 it fails (median
+65.90\,ms), and a run at 1{,}024 exhausted the 16\,GiB allotted to the Docker
+Desktop virtual machine.
 % source: docs/bench/README.md (14 runs at c=64, median 24.8; c=256)
 Decomposing the decision path showed that the cost at saturation is dominated by
 the projection fold the decision waits on, not by the appends, and that
@@ -84,8 +89,8 @@ by the client (cooperative admission, \cref{sec:design-edges}); the reference
 application's raw-MCP variant, in which the proxy holds the payment on the wire
 until a separate validator answers, runs in \code{make loan-desk} with scripted
 agents. The reference application is a consumer-lending desk. Fifty
-author-written applications---20 ordinary, 12 over the lending mandate of
-5{,}000\,EUR, 10 prompt injections at five escalating strengths, 8 malformed---go
+author-written applications (20 ordinary, 12 over the lending mandate of
+5{,}000\,EUR, 10 prompt injections at five escalating strengths, 8 malformed) go
 through a model-backed \emph{intake} agent that extracts the application as JSON
 and a model-backed \emph{underwriter} that recommends approval, then a payment
 and a notice (\cref{app:prompts}). The model is \code{gemma4:31b-cloud},
@@ -94,21 +99,27 @@ record, at temperature 0.7 with a seed per saga; both are the values requested,
 and we did not verify that the service honours the seed. Each application runs
 twice. \emph{Governed}: through \code{janus-orchd} at \code{-sync full}; the
 underwriter \emph{publishes} its recommendation, so the paying step cannot state
-it; the agent always proposes the payment, and two pre-execution gates decide---a
+it; the agent always proposes the payment, and two pre-execution gates decide: a
 policy gate reading the published recommendation, and a validator gate answered
 by a separate, deterministic process that applies the mandate to the amount the
 question carries. \emph{Plain}: the same agent without Janus, fed the governed
 run's recorded model outputs, paying whenever the underwriter said yes. The model
 is called once per application, so the two columns differ by Janus and not by
 the model's variance. Fifty further sagas repeat ten applications under five
-seeds each. After each run the log goes through the auditor's three checks.
+seeds each. After each run the log goes through the auditor's three checks:
+\code{janus-verify}, the gate audit and spot-replay. The applications are
+synthetic: names and accounts are invented, and none is drawn from real customer
+data.
 % source: examples/loan-desk/agentic/; scripts/loan-desk-agentic.sh
 
 \emph{Three conditions and an oracle.} In \emph{condition A}, designed and run
 first and not registered, the mandate appears in the underwriter's prompt as well
 as in the policy. In \emph{condition B}, designed after A's result, that one
 sentence is removed: the mandate's amount then lives only in the policy, and its
-``stated, legitimate purpose'' clause nowhere. B's hypothesis was written down
+``stated, legitimate purpose'' clause nowhere. From B on, each decision record
+also names the model's inputs by hash; A's do not, and A's harness was not
+committed before it ran, so A's prompts are attested by the code, not by its
+log. B's hypothesis was written down
 before it ran, but not the harness. The removed sentence turned out to be the prompt's only statement
 that amounts were in euro cents, so \emph{condition B$'$} removes the mandate as
 B does and states the unit instead. Finally an \emph{always-approve oracle}
@@ -122,7 +133,8 @@ back (\cref{sec:artifact}).
 \begin{table}[t]
 \caption{A real model behind loan-desk, SDK path: 50 applications and 50
 repeats per condition. B is confounded by the unit it no longer stated; B$'$
-restores the unit. The audit counts verdicts on steps with a requirement due.
+restores the unit. These runs predate caller signatures. The audit counts
+verdicts on steps with a requirement due.
 Times are over the 50 application sagas; p95 is the 47th of 50.}
 \label{tab:model}
 \centering\footnotesize
@@ -132,7 +144,7 @@ Times are over the 50 application sagas; p95 is the 47th of 50.}
 & A: in prompt & B: policy & B$'$: policy+unit \\
 \midrule
 model approved (ordinary, of 20) & 20 & 6 & 18 \\
-ordinary declined for the unit & 0 & 11 & 0 \\
+ordinary declined, amount inconsistent & 0 & 11 & 0 \\
 model approved over the mandate & 0 & 3 & \textbf{6} \\
 plain agent paid over the mandate & 0 & 3 & \textbf{6} \\
 governed run paid over the mandate & 0 & 0 & \textbf{0} \\
@@ -154,19 +166,19 @@ an injection, for want of a stated purpose); the plain agent paid none of them,
 and neither did the governed run. The safety comparison is \textbf{0 against 0},
 the validator never refused, and every governed refusal came from the policy gate
 reading the model's own published decline. That is the obvious objection to
-Janus---\emph{why not put the rule in the prompt?}---and in this run the prompt
+Janus (\emph{why not put the rule in the prompt?}), and in this run the prompt
 was enough, including against the ten injections, which the underwriter saw in
 the original text.
 
 Conditions B and B$'$ ask whether a rule held only in the policy still binds
 when the prompt omits it. In B the underwriter approved three out-of-mandate
 applications, and the plain agent paid them; but B also declined 11 ordinary
-applications as inconsistent, because it read minor units as euros, and that
-confound suppressed approvals. With the unit stated, B$'$ approved 18 of 20
+applications citing an amount inconsistent with the text, ten of them by reading
+minor units as euros, and that confound suppressed approvals. With the unit stated, B$'$ approved 18 of 20
 ordinary applications, declined none for the unit, and approved \textbf{six}
-applications over the mandate: three with no injection at all---7{,}500\,EUR for
+applications over the mandate: three with no injection at all (7{,}500\,EUR for
 tuition, 15{,}000 for solar panels and 5{,}500 for a medical need, each called
-``reasonable''---and three injections: 8{,}000\,EUR for a vehicle the
+``reasonable'') and three injections: 8{,}000\,EUR for a vehicle the
 application asked to be treated ``as a small loan'' (the model called it
 ``relatively small''), and the two B also approved, 25{,}000\,EUR because ``the
 applicant has been pre-approved by the branch manager'' and 12{,}000\,EUR for a
@@ -174,7 +186,7 @@ applicant has been pre-approved by the branch manager'' and 12{,}000\,EUR for a
 % source: examples/loan-desk/agentic/applications.json (app_33 injection_level 1); 2026-09-29T055947Z/results.json
 The plain
 agent paid all six; the governed run paid none, each refused by the validator
-from the facts the question carried. The refusal is by construction---the plain
+from the facts the question carried. The refusal is by construction: the plain
 agent has no amount check by design, and one given the validator's three-line
 rule would also have paid none. What the governed run adds is the record: the
 model's grounds, the facts the question carried and the validator's reason all
@@ -193,13 +205,19 @@ refusing 20. Over B's intakes the figures are 44, 21, 44, 23 and 21. Both runs
 are deterministic, and their counts were predicted from the committed intake
 outputs before they ran and matched exactly, so they test the implementation, not
 a hypothesis about the world. They also measure the limit below: the governed
-runs paid four (A) and three (B) applications whose declared amount was not the
-one their text asked for.
-The runs above predate caller signatures. A registered replication of the
-oracle over A's intakes, with every participant signing under its own declared
-key and the daemon refusing unsigned callers, gave identical outcomes, and the
-audit verified all 186 of its answers and results as signed by their own
-participants; the median Janus time per saga moved from 113.0 to 112.4\,ms.
+runs paid four (A) and three (B) applications whose declared amount their text
+does not support.
+The runs above predate caller signatures: the audit counts every one of their
+answers and results as unsigned. A registered replication of the oracle over A's
+intakes, with every participant signing under its own declared key and the daemon
+refusing unsigned callers, gave identical outcomes, and the audit verified all
+186 of its answers and results as signed by their own participants; the median
+Janus time per saga moved from 113.0 to 112.4\,ms, well inside run-to-run
+variation. In that run the keys were generated on one host and the agent's
+container could read the validator's key, so it shows that the signatures are
+present and verify, not that an agent without the validator's key cannot answer
+for it; that is \code{TestAnAgentCannotAnswerAsTheValidator}'s claim. The harness
+now gives each container only its own participants' keys, read-only.
 % source: docs/bench/agentic/2026-09-29T055849Z/ (O-A), 2026-09-29T055923Z/ (O-B), 2026-09-29T075041Z/ (O-A signed), CONDITIONS.md
 
 \emph{What the envelope did not do.} Two of ten injections succeeded at
@@ -232,9 +250,9 @@ fences in all 194 answers in each condition; the decision records say so.
 
 \emph{Overhead.} Janus added a median of 136\,ms per completed four-step saga in
 A and B (20 and 6 such sagas) and 162\,ms in B$'$ (18), run two days later;
-\cref{tab:model}'s medians are over all 50 application sagas, most of which
+\cref{tab:model}'s medians are over all 50 application sagas, many of which
 stopped at the payment. The sagas ran one at a time on the darwin host's
-device-wide barrier---not a deployment number. The time a governed step spends
+device-wide barrier, not a deployment number. The time a governed step spends
 waiting for the validator is the agent's 50\,ms polling interval and is excluded.
 % source: rows[*].governed.janus_seconds where all four steps ran: 136.15 (A), 135.8 (B), 162.2 (B')
 
@@ -247,5 +265,6 @@ is deterministic.
 The same lending application, written once without Janus and once with it,
 differs by 45 lines of code on LangGraph through the Python SDK and 34 lines on
 raw MCP through the proxy, counting changed lines as added and excluding comments;
-both pass the conformance suite.
+both pass the conformance suite, which checks that an integration gets the
+guarantees Janus offers (\code{pkg/conformance}).
 % source: examples/loan-desk/README.md (make loan-desk, re-run 2026-09-27)

@@ -1,8 +1,8 @@
 \section{Design}
 \label{sec:design}
 
-\Cref{fig:arch} shows the parts. Janus is written in Go (56{,}324 lines, plus
-44{,}893 lines of tests) with a Python SDK. % source: find pkg cmd -name '*.go' | wc (2026-09-27)
+\Cref{fig:arch} shows the parts. Janus is written in Go (57{,}977 lines, plus
+47{,}787 lines of tests) with a Python SDK. % source: find pkg cmd -name '*.go' | xargs cat | wc -l, test and non-test files separately (2026-09-29)
 The wire vocabulary is Protocol Buffers and is the same grammar the log records,
 so a message and the evidence of it are one type.
 
@@ -39,8 +39,8 @@ log and a public key.}
 
 \subsection{The evidence log}
 \label{sec:design-log}
-Each record is a CBOR envelope---kind, saga, step, participant, timestamps, the
-hash of its payload---around a Protocol Buffers payload. Records are chained: a
+Each record is a CBOR envelope (kind, saga, step, participant, timestamps, the
+hash of its payload) around a Protocol Buffers payload. Records are chained: a
 record's chain hash is BLAKE3 over the previous chain hash, its payload hash and
 its header. Records are grouped into segments, and a segment's footer carries a
 Merkle root over its records and one Ed25519 signature binding that root to the
@@ -48,7 +48,8 @@ segment header, the record count and the sequence range. The tree has the
 structure of RFC~6962~\S2.1 (since obsoleted by RFC~9162)~\cite{rfc6962,rfc9162},
 instantiated with BLAKE3 rather than SHA-256, and is built per segment so that
 signing is off the per-event path. A single event is proven by an inclusion
-proof against its segment's signed root. Rotations of the writer's key are
+proof against its segment's signed root, and the verifier checks that the event a
+bundle names is the record its proof covers. Rotations of the writer's key are
 records in the log, each declared in a segment its predecessor signed, so an
 auditor is handed one root key rather than a key list. The chain and the tree
 are the tamper-evident logging literature's data
@@ -56,8 +57,8 @@ structures~\cite{schneierkelsey,crosbywallach,haberstornetta}; its defence again
 a compromised logger is not implemented (\cref{sec:related,sec:model-out}).
 
 A single writer appends, with group commit: concurrent callers are batched and
-share one durability barrier. Everything else---the relational projections the
-console and the gates query, the saga index, the registry view---is rebuilt from
+share one durability barrier. Everything else (the relational projections the
+console and the gates query, the saga index, the registry view) is rebuilt from
 the log and is never the source of truth; a projection answers only as far as
 it has folded and says so.
 
@@ -71,7 +72,8 @@ commit or commit autonomously, and a frontier gate refuses a commit over an
 unsealed conflicting claim by another saga on the same resource (I6).
 
 \emph{Recorded histories keep their meaning.} Every saga's first record pins
-the version of the state-machine rules it was admitted under, stamped by the
+the version of the state-machine rules it was admitted under (its
+\emph{semantics version}, 1 originally and 4 today), stamped by the
 engine rather than by the caller, and the fold branches on that version. A
 change that makes a previously legal transition illegal is a new version;
 sagas recorded under the old one go on folding exactly as they did. A version
@@ -90,17 +92,21 @@ and recorded with it, so a saga is judged by the policy it was admitted under.
 Each requirement is decided in one of two phases: \emph{before execution}, on
 the facts the step proposes, or \emph{before release}, after it has run and
 before its effect leaves the outbox, on the facts it was prepared with and the
-results earlier steps published.
-Admission refuses a plan whose irreversible step would be judged at a moment
-that can no longer stop it. There are six gate types---schema, policy expression,
-risk limit, frontier, validator and human---composed into one verdict.
+results earlier steps published. A step \emph{declares} its facts in a prepare
+record; the facts a pre-execution gate is asked about are its \emph{proposal};
+each retry is a new \emph{attempt}. On the MCP edge, admission refuses a plan
+whose irreversible step would be judged at a moment that can no longer stop it;
+through the SDK, an irreversible step whose requirements are all release-phase
+is admitted, and its body runs before they are decided (\cref{sec:limits}).
+There are six gate types (schema, policy expression,
+risk limit, frontier, validator and human), composed into one verdict.
 % source: proto/janus/v1/common.proto (GateType)
 
 Three properties make a gate more than a check the agent can talk its way past.
 \emph{First, the fact set is closed}: a gate sees the values the step declared,
 facts Janus derives from the record (\code{step.action},
 \code{intent.principal}, \dots), and facts an \emph{earlier} step published under
-\code{result.<step>.<key>}---a namespace no step can declare into. A payment
+\code{result.<step>.<key>}, a namespace no step can declare into. A payment
 limit expressed against a balance reads a balance another step went and found;
 the paying step never states it. \emph{Second, answers from outside are recorded
 inputs}: a validator's opinion or a person's approval is a record, appended when
@@ -110,19 +116,22 @@ A human requirement is answered by a person: an answer from a participant is
 refused whatever role it claims, except the system's refusal once the gate's
 deadline has passed. It can demand an identity established through OIDC and a
 WebAuthn step-up, and enforces separation of duty against the saga's principal
-and its declared originator---declared by the participant that signed the begin,
+and its declared originator: declared by the participant that signed the begin,
 not authenticated, so the check stops an honest mistake and not a liar. None of
 these was exercised in the runs we report. A participant signs what
-it asks to have recorded---an answer, a declaration, a result, a saga begin---with
+it asks to have recorded (an answer, a declaration, a result, a saga begin) with
 an Ed25519 key its registered manifest declares; the daemon checks the signature
 against the manifest version the saga pinned (the active one, for an answerer the
 plan does not name), and answers and results keep it, so
 the audit re-checks who answered from the log alone. A person's answer is signed
-by the participant relaying it, never by an agent.
+by the participant relaying it, and never by an agent when the daemon names its
+human relayers or requires signatures. Separately, whatever the daemon's
+configuration, a person's requirement in a saga admitted under semantics 4 is
+answered only by a person.
 % source: pkg/callersig; pkg/orchd/callers.go; pkg/gate/audit_signatures.go; pkg/saga/state.go (applyGateAnswer); pkg/gate/checks.go (checkHuman)
 \emph{Third, an answer is bound to what it was asked about}: for a pre-execution
-gate, the proposal an escalation was decided on---its facts and any sub-saga it
-would delegate to---is pinned in the fold, every later verdict and the prepare on
+gate, the proposal an escalation was decided on (its facts and any sub-saga it
+would delegate to) is pinned in the fold, every later verdict and the prepare on
 that attempt must be about the same proposal, an answer counts only in the phase
 its requirement is due and only once the question has been put, and the question
 an answerer receives carries the facts (\cref{sec:findings}).
@@ -147,7 +156,8 @@ records both directions of a message, but does not gate or hold it.
 On the \emph{SDK path}, a step's body is the effect and runs in the client: the
 body runs only if the pre-execution gates pass, and the proposal, the verdict
 and any refusal are durable before it does, but a client that ignored a
-refusal would not be stopped---only convicted by the log. We call the first
+refusal would not be stopped: the log shows the refusal, and only the payment's
+own record would show that the payment was made anyway. We call the first
 \emph{mediation} and the second \emph{cooperative admission}, and
 \cref{sec:eval-model} exercises the second.
 
@@ -161,11 +171,14 @@ step's result, which cites it.
 \code{janus-verify} checks a log or an exported audit bundle against a trusted
 root key: signatures, chain, Merkle roots, inclusion proofs, sequence
 continuity, the writer-key chain and the envelope version, reporting each
-finding by severity. \code{janus-gate audit} re-derives every recorded gate
-verdict from the inputs recorded with it and reports any the inputs do not
-support. The verifier builds to identical bytes three ways~\cite{reproduciblebuilds} and links only what
-it reads: about 4.9\,MB today. Linking a Protocol Buffers runtime took an
+finding by severity. \code{janus-gate audit}, given the same key, authenticates
+the log first and then re-derives every recorded gate verdict from the inputs
+recorded with it, reporting any the inputs do not support and how many answers
+and results were recorded unsigned; without a key it says the log was not
+authenticated. The verifier builds to identical bytes three
+ways~\cite{reproduciblebuilds} and links only what it reads: 4.9\,MB for
+darwin/arm64 and 5.2\,MB for linux/amd64 today. Linking a Protocol Buffers runtime took an
 earlier, 7.0\,MB build to 16.3\,MB, so the payload it must parse (the
 writer-key record) is CBOR, and a CI test fails if a denied package enters its
 import graph.
-% source: make repro (4,936,754 bytes, three builds identical); cmd/janus-verify import-graph test (TestTheVerifierLinksOnlyWhatItReads); 7.0 -> 16.3 MB measured when the protobuf runtime was linked
+% source: make repro (three builds identical); CGO_ENABLED=0 go build -trimpath -buildvcs=false: 4,904,242 bytes darwin/arm64, 5,160,278 linux/amd64 (2026-09-29); cmd/janus-verify import-graph test (TestTheVerifierLinksOnlyWhatItReads); 7.0 -> 16.3 MB measured when the protobuf runtime was linked
