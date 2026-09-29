@@ -12,14 +12,15 @@
 \usetikzlibrary{arrows.meta,positioning,fit,calc}
 \usepackage[hidelinks]{hyperref}
 \usepackage[capitalise,nameinlink]{cleveref}
+\hypersetup{pdftitle={Janus: Evidence-Before-Effect Sagas and Offline-Verifiable Provenance for Agentic
+             LLMs}, pdfauthor={Mustafa Arslan}}
 
 \lstset{basicstyle=\ttfamily\scriptsize,breaklines=true,columns=fullflexible,
   frame=single,framerule=0.3pt,xleftmargin=2pt,xrightmargin=2pt}
 \newcommand{\code}[1]{\texttt{#1}}
 
-% No em dashes anywhere in the paper, including the ones IEEEtran puts after
-% "Abstract" and "Index Terms": a colon instead. Each patch applies only to the
-% branch of the class that contains it.
+% IEEEtran sets an em dash after "Abstract" and "Index Terms"; this paper uses a
+% colon. Each patch applies only to the branch of the class that contains it.
 \usepackage{etoolbox}
 \makeatletter
 \patchcmd{\abstract}{\textit{\abstractname}---}{\textit{\abstractname}:\ }{}{}
@@ -88,11 +89,11 @@ provenance, auditability, tool use, transactions
 \input{sections/conclusion}
 
 \section*{Acknowledgment}
-Generative AI was used throughout. Claude (Anthropic; Opus 5, Opus 5.5, Sonnet 5) drafted the
-text of every section, the figures and tables, the system's code and its measurement scripts, and
-took part in adversarial review; Gemini (Google; 3.8 Flash) was used in adversarial review of the
-design, the code and the paper. The author conceived the problem and the approach, directed the
-work, checked each result against its source, and takes full responsibility for the content.
+The author conceived the problem and the approach, directed the work, and verified all results.
+Generative AI assisted throughout: Claude (Anthropic; Opus 5, Opus 5.5, Sonnet 5) was used in drafting
+the text of all sections and the code and measurement scripts (\cref{sec:design,sec:eval} and
+\cref{sec:artifact}), and Claude and Gemini (Google; 3.8 Flash) in adversarial review of the design and
+the paper. The author takes full responsibility for the content.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
