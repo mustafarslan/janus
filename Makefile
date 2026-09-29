@@ -260,7 +260,8 @@ compliance: build
 
 ## loan-desk-agentic: loan-desk with a real model (ollama), governed and plain on
 ## the same model outputs, then verify, gate audit and spot-replay. The paper's
-## one real-model measurement. JANUS_AGENTIC_LIMIT=N runs the first N only.
+## one real-model measurement. JANUS_AGENTIC_LIMIT=N runs the first N only;
+## JANUS_UNSIGNED=1 runs without caller signatures, as the first runs did.
 loan-desk-agentic:
 	./scripts/loan-desk-agentic.sh
 
