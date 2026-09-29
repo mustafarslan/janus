@@ -135,6 +135,11 @@ type Report struct {
 	// Signed is how many recorded answers and results carried a participant's
 	// signature that verified against the keys its manifest declares.
 	Signed int
+	// Unsigned is how many recorded answers and results carried no signature:
+	// from a participant whose manifest declares no key, a person's answer that
+	// names no relayer, or a record no participant can be tied to. Nothing but
+	// the daemon vouches for who sent them.
+	Unsigned int
 	// Findings is what did not hold. Empty means every recorded decision
 	// follows from the inputs recorded with it.
 	Findings []Finding
@@ -149,7 +154,13 @@ func (r Report) String() string {
 		r.Verdicts, r.Sagas)
 	if r.Signed > 0 {
 		fmt.Fprintf(&b, "  %d answers and results carry a participant's signature that verifies "+
-			"against the key its manifest declares\n", r.Signed)
+			"against the key its manifest in this log declares\n", r.Signed)
+	}
+	if r.Unsigned > 0 {
+		fmt.Fprintf(&b, "  %d answers and results carry no signature (the participant declares no key, "+
+			"a person's answer names no relayer, or no participant can be tied to the record): "+
+			"nothing but the daemon vouches for who sent them\n",
+			r.Unsigned)
 	}
 	if len(r.Findings) == 0 {
 		b.WriteString("  every recorded verdict follows from the inputs recorded with it\n")
@@ -195,10 +206,14 @@ func Audit(dir string) (Report, error) {
 	asked := map[string]map[string]saga.FactValue{}
 
 	for _, t := range all {
-		if n, findings := sigs.check(states, t); n > 0 || len(findings) > 0 {
-			rep.Signed += n
-			rep.Findings = append(rep.Findings, findings...)
+		outcome, findings := sigs.check(states, t)
+		switch outcome {
+		case sigVerified:
+			rep.Signed++
+		case sigUnsigned:
+			rep.Unsigned++
 		}
+		rep.Findings = append(rep.Findings, findings...)
 		switch t.ev.Kind {
 		case evidence.KindStepPrepare:
 			rep.Findings = append(rep.Findings, auditPreparedOnNothing(states, t)...)
