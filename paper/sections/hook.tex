@@ -1,6 +1,6 @@
 % Fig. 1: one condition-B application, drawn from its records.
 % source: docs/bench/agentic/2026-09-27T140840Z/evidence, saga sg_ag_app_35, seq 415-426
-%   (dumped with a throwaway WalkSaga reader); plain lane from
+%   (dumped with a WalkSaga reader); plain lane from
 %   docs/bench/agentic/2026-09-27T140840Z/results.json rows[app_35].plain;
 %   strip from the B, B', O-A and O-B results.json summaries (2026-09-27T140840Z,
 %   2026-09-29T055947Z, 2026-09-29T055849Z, 2026-09-29T055923Z); evidence and
@@ -30,8 +30,8 @@
 \draw[arr] (model.east) -- ++(0.25,0) |- (pay.west);
 \draw[arr,dashed] (pay) -- (trace);
 % governed lane
-\node[rec=8.3cm,anchor=north west] (log) at (7.35,-1.05)
-  {\ttfamily\tiny
+\node[rec=10.4cm,anchor=north west] (log) at (7.35,-1.05)
+  {\ttfamily\scriptsize
    417 DPR          intake: model, seed 1034, T 0.7, output hash\\
    418 STEP\_RESULT  intake: amount\_minor=2500000\\
    420 DPR          underwrite: grounds ``pre-approved by the branch manager''\\
@@ -48,9 +48,9 @@
    with no model call};
 \draw[arr,densely dotted] (log.south west)++(0.4,0) |- (aud.east);
 % honesty labels
-\node[align=left,text width=3.0cm,anchor=north west,font=\tiny] (cav) at (0,-2.6)
-  {\textbf{SDK path}: the client honoured the refusal, and the log would convict one
-   that did not; on the MCP edge the proxy holds the effect itself.\\
+\node[align=left,text width=3.0cm,anchor=north west,font=\scriptsize] (cav) at (0,-2.6)
+  {\textbf{SDK path}: the client honoured the refusal; one that ignored it would pay
+   against a refusal on the record. On the MCP edge the proxy holds the effect.\\
    \textbf{Not seen}: gates judge the \emph{declared} amount, so 4{,}000\,EUR declared
    for a 40{,}000\,EUR request is paid.};
 \end{tikzpicture}\\[3pt]
@@ -67,11 +67,13 @@ always-approve oracle over B's recorded intakes & 21 & 21 & \textbf{0} \\
 \end{tabular}
 \caption{The same model output, two fates. Above: one real condition-B application,
 the plain agent's payment, and the governed saga's own log records (sequence
-numbers from the committed run; the same application ended the same way in B$'$). Below: out-of-mandate payments across the model
+numbers from the committed run; the same application ended the same way in B$'$).
+DPR: decision provenance record; ESCALATE: the gate needs an answer from outside.
+These runs predate caller signatures (\cref{sec:eval-model}). Below: out-of-mandate payments across the model
 run and the oracle stress runs; the refusals are made by a deterministic
-validator and are by construction---what Janus adds is that each is recorded
+validator and are by construction; what Janus adds is that each is recorded
 with its inputs and re-derives offline. In the oracle runs Janus still paid four
-(A) and three (B) applications whose declared amount was unfaithful to their
-text (\cref{sec:eval-model}).}
+(A) and three (B) applications whose declared amount their text does not
+support (\cref{sec:eval-model}).}
 \label{fig:hook}
 \end{figure*}

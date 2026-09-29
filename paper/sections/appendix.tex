@@ -16,27 +16,33 @@ intake agent's JSON followed by the original application text.
 
 \section{Reproducing the numbers}
 \label{sec:artifact}
-\begin{tabular}{@{}p{3.2cm}p{4.9cm}@{}}
+\begin{table}[h]
+\caption{Reproducing each result. Needs: D, Docker; M, the model service
+(\code{ollama}); G, about 60\,GB of free disk; --, nothing beyond Go.}
+\label{tab:artifact}
+\centering\footnotesize
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.0cm}>{\raggedright\arraybackslash}p{5.25cm}c@{}}
 \toprule
-Result & Command or artifact \\
+Result & Command or artifact & Needs \\
 \midrule
-crash consistency & \code{make sagachaos}, \code{make sagachaos-hosted} \\
-72-hour soak & \code{DURATION=72h make soak} \\
-failover & \code{make failover} \\
-100M-event verification & \code{janus-bench} \code{-events 100000000} \code{-payload 256} \code{-producers 256} \code{-sync none} \code{-segment-bytes} \code{16777216} \code{-dir} \emph{(60\,GB free)}; report in \code{docs/bench/} \code{phase1-100m.json} \\
-write path, decision path & \code{make bench-linux}, \code{make latency-linux} \\
-adversarial auditor & \code{make evil-auditor} \\
-real-model runs & \code{make loan-desk-agentic}, with \code{JANUS\_CONDITION=B} or \code{Bprime}; runs, logs and public keys in \code{docs/bench/agentic/} \\
-oracle runs & the same, with \code{JANUS\_ORACLE=} \code{always-approve} and \code{JANUS\_REPLAY\_INTAKE=} a run's \code{results.json} \\
-refund run & the same, with \code{JANUS\_AGENTIC\_ONLY=} and \code{JANUS\_FAIL\_NOTIFY=} both set to app\_06 to app\_10 \\
-auditing a run & \code{janus-verify -keys} \code{pub.json evidence} and \code{janus-gate audit evidence}, in the run's directory \\
-signed replication & the oracle run with a key per participant and signatures required (\code{janus-orchd} \code{-require-caller-} \code{signatures}): \code{2026-09-29T075041Z} \\
-pre-registration & see below \\
-integration cost & \code{make loan-desk} \\
-replay corpus & \code{make corpus} \\
-reproducible verifier & \code{make repro} \\
+crash consistency & \code{make sagachaos}, \code{make sagachaos-hosted} & -- \\
+72-hour soak & \code{DURATION=72h} \code{SOAK\_SYNC=full} \code{SOAK\_SEGMENT\_BYTES=65536} \code{make soak} & -- \\
+failover & \code{make failover} & -- \\
+100M-event verification & \code{janus-bench} \code{-events 100000000} \code{-payload 256} \code{-producers 256} \code{-sync none} \code{-segment-bytes} \code{16777216} \code{-dir} \emph{dir}; report in \code{docs/bench/} \code{phase1-100m.json} & G \\
+write path & \code{make bench-linux} & D \\
+decision path & \code{make latency-linux}; at 64: \code{LATENCY\_ARGS=}\code{'-background 2000} \code{-concurrency 64 -sync full'}; at 256: \code{'-samples 768} \code{-background 2000} \code{-resources 4096} \code{-concurrency 64,256} \code{-sync full'} & D \\
+adversarial auditor & \code{make evil-auditor} & -- \\
+real-model runs & \code{JANUS\_UNSIGNED=1} \code{make loan-desk-agentic}, with \code{JANUS\_CONDITION=B} or \code{Bprime}; runs, logs and public keys in \code{docs/bench/agentic/} & D, M \\
+oracle runs & the same, with \code{JANUS\_ORACLE=} \code{always-approve} and \code{JANUS\_REPLAY\_INTAKE=} a run's \code{results.json} & D \\
+refund run & the same as a model run, with \code{JANUS\_AGENTIC\_ONLY} and \code{JANUS\_FAIL\_NOTIFY} both set to \code{app\_06,app\_07,} \code{app\_08,app\_09,app\_10} & D, M \\
+signed replication & the oracle run without \code{JANUS\_UNSIGNED}: a key per participant, each container holding only its own, and \code{janus-orchd} \code{-require-caller-signatures}; committed as \code{2026-09-29T075041Z} & D \\
+auditing a run & in the run's directory, \code{janus-verify} \code{-keys pub.json evidence} and \code{janus-gate audit} \code{-keys pub.json evidence} & -- \\
+integration cost & \code{make loan-desk} & D \\
+replay corpus & \code{make corpus} & -- \\
+reproducible verifier & \code{make repro} & D \\
 \bottomrule
 \end{tabular}
+\end{table}
 
 \smallskip\noindent\emph{What was registered, and when.} Each run directory
 records the development commit it ran from, and \code{docs/bench/agentic/CONDITIONS.md}

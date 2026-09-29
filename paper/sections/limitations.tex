@@ -20,7 +20,17 @@
   (\cref{sec:eval-model}). It
   shows that the envelope bounds what a real model's decisions release in cases
   where the model wanted out-of-policy effects; it does not estimate how often a
-  model wants them.
+  model wants them. Each application's decision is one draw (one seed): in B$'$
+  one repeated application changed decision with the seed, and none of the six
+  over-mandate approvals was repeated, so six is not a stable count. Six of 20
+  has a 95\% Clopper--Pearson interval of 12--54\%, three of 21 in B one of
+  3--36\%, and the two conditions do not differ significantly (Fisher's exact
+  test, $p=0.28$).
+  % source: docs/bench/agentic/2026-09-27T140840Z and 2026-09-29T055947Z results.json (declared amount > 500000: B 21, B' 20; approved 3 and 6); scipy.stats beta and fisher_exact
+\item \textbf{Irreversible steps through the SDK.} An \code{IRREVERSIBLE\_GATED}
+  step run through the SDK whose requirements are all release-phase is admitted,
+  and its body (the effect) runs before they are decided; only the MCP edge
+  holds such an effect until the release gates pass.
 \item \textbf{Declared, not faithful.} Gates decide on declared facts. A model
   that misreads or is steered into declaring a smaller amount passes them;
   Janus records the misreading and bounds its authority, and does not detect it.
@@ -30,13 +40,15 @@
   real-model result in this paper is on the SDK path.
 \item \textbf{What a signature does not cover.} A participant that declares no
   key is taken at its word unless the daemon requires signatures; the model's
-  decision record beside a signed result is not covered by the signature; and a
-  declaration's signature does not bind its attempt (\cref{sec:model-out}).
+  decision record beside a signed result is not covered by the signature; a
+  declaration's signature does not bind its attempt; an answer's does not cover
+  the facts its answerer was shown; and a key withdrawn from a manifest still
+  signs for sagas that pinned it (\cref{sec:model-out}).
 \item \textbf{What a person sees.} A WebAuthn step-up is bound to the attempt,
   and through the pin to its proposal, but the person's authenticator is not
   shown the amount it signs for.
-\item \textbf{Self-reported provenance.} A model's decision record---model,
-  sampling, output hash, grounds---is reported by the agent; the daemon stamps
+\item \textbf{Self-reported provenance.} A model's decision record (model,
+  sampling, output hash, grounds) is reported by the agent; the daemon stamps
   its identity and position, not its truth.
 \item \textbf{Registration.} Condition A was not registered, and condition B's
   harness was committed after its run. The later runs' hypotheses were committed
