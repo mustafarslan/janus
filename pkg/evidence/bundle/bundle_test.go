@@ -776,3 +776,123 @@ func rotatingLog(t *testing.T, records int) (string, *keys.Signer) {
 	}
 	return dir, signer
 }
+
+// TestASelectionNamesTheEventItsProofCovers: an inclusion proof binds a chain
+// hash to a leaf; the id, sequence number, saga, step and kind the manifest
+// prints beside it are claims about that leaf. In an unsigned bundle nothing
+// else vouches for them, so each must be checked against the record the proof
+// covers -- or the list of "this saga's events" can name anything.
+func TestASelectionNamesTheEventItsProofCovers(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		patch func(first map[string]any, all []any)
+	}{
+		{"another event id", func(first map[string]any, _ []any) { first["event_id"] = "forged-event-id" }},
+		{"another seq", func(first map[string]any, _ []any) { first["seq"] = 999999 }},
+		{"another saga, on every entry", func(_ map[string]any, all []any) {
+			for _, e := range all {
+				e.(map[string]any)["saga_id"] = "sg_someone_else"
+			}
+		}},
+		{"another kind", func(first map[string]any, _ []any) { first["kind"] = "EFFECT_RELEASED" }},
+		{"another step", func(first map[string]any, _ []any) { first["step_id"] = "st_elsewhere" }},
+		{"a leaf past the end", func(first map[string]any, _ []any) { first["leaf_index"] = 999999 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, signer := writeLog(t)
+			dest := filepath.Join(t.TempDir(), "bundle")
+			trusted := keys.PublicKeySet{signer.KeyID(): signer.Public()}
+			if _, err := bundle.Export(bundle.ExportOptions{
+				SegmentDir: dir, Dest: dest, Keys: trusted, SagaID: "sg_loan_0001",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			manifestPath := filepath.Join(dest, bundle.ManifestName)
+			raw, err := os.ReadFile(manifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			sel := m["selection"].([]any)
+			tc.patch(sel[0].(map[string]any), sel)
+			patched, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(manifestPath, patched, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			rep, err := verify.Bundle(dest, verify.Options{Keys: trusted, Version: "test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.OK {
+				t.Fatalf("a selection relabelled (%s) verified:\n%s", tc.name, rep.Text())
+			}
+			if tc.name != "a leaf past the end" && !hasCode(rep, "SELECTION_LABEL_MISMATCH") {
+				t.Fatalf("expected SELECTION_LABEL_MISMATCH, got:\n%s", rep.Text())
+			}
+		})
+	}
+}
+
+// TestASagaBundleSelectsTheWholeSagaAndNothingElse: a bundle exported for one
+// saga selects every record of that saga in the segments it carries, once.
+// The segments are in the bundle in full, so an entry dropped, repeated or
+// borrowed from another saga can be seen -- and in an unsigned bundle nothing
+// else would show it.
+func TestASagaBundleSelectsTheWholeSagaAndNothingElse(t *testing.T) {
+	for _, tc := range []struct {
+		name, code string
+		patch      func(m map[string]any)
+	}{
+		{"an entry dropped", "SELECTION_INCOMPLETE", func(m map[string]any) {
+			m["selection"] = m["selection"].([]any)[1:]
+		}},
+		{"an entry repeated", "SELECTION_DUPLICATE", func(m map[string]any) {
+			sel := m["selection"].([]any)
+			m["selection"] = append(sel, sel[0])
+		}},
+		{"the scope names another saga", "SELECTION_OUT_OF_SCOPE", func(m map[string]any) {
+			m["scope"].(map[string]any)["saga_id"] = "sg_someone_else"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, signer := writeLog(t)
+			dest := filepath.Join(t.TempDir(), "bundle")
+			trusted := keys.PublicKeySet{signer.KeyID(): signer.Public()}
+			if _, err := bundle.Export(bundle.ExportOptions{
+				SegmentDir: dir, Dest: dest, Keys: trusted, SagaID: "sg_loan_0001",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			manifestPath := filepath.Join(dest, bundle.ManifestName)
+			raw, err := os.ReadFile(manifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			tc.patch(m)
+			patched, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(manifestPath, patched, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			rep, err := verify.Bundle(dest, verify.Options{Keys: trusted, Version: "test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.OK || !hasCode(rep, tc.code) {
+				t.Fatalf("%s: want %s, got:\n%s", tc.name, tc.code, rep.Text())
+			}
+		})
+	}
+}
