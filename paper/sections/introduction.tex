@@ -4,16 +4,16 @@
 
 An LLM agent that can call a payments tool is a program whose next action is
 sampled. The engineering response has been to wrap tool use in transactions
-borrowed from databases and workflow engines---sagas with compensating
+borrowed from databases and workflow engines (sagas with compensating
 actions~\cite{sagas,sagallm}, progress-aware commit~\cite{atomix}, rollback
-scopes~\cite{cordon,agentrewind}---and, separately, to record what the agent did
+scopes~\cite{cordon,agentrewind}) and, separately, to record what the agent did
 in tamper-evident logs~\cite{novafabric,agentflightrecorder,righttohistory}. Both
 matter. Neither, by itself, gives a regulated operator what it must eventually
 show a supervisor: that \emph{each effect in the world was preceded by a
 decision whose inputs are on the record, made by rules that were in force, and
 checkable by someone who trusts nothing but a public key}. The EU AI Act
-requires high-risk systems---among them those that assess the creditworthiness of
-natural persons---to ``technically allow for the automatic recording of events''
+requires high-risk systems, among them those that assess the creditworthiness of
+natural persons, to ``technically allow for the automatic recording of events''
 over their lifetime (Art.~12(1), Annex~III point~5(b))~\cite{euaiact}, for such
 systems from 2 December 2027~\cite{euaiomnibus}; the financial sector's ICT
 risk rules ask that logs be protected ``against tampering, deletion, and
@@ -29,10 +29,11 @@ built for a third party to check. \emph{Janus} keeps that order and makes the
 record the evidence. Its core rule is \emph{evidence before effect}: a gated effect is held
 until the record of the decision that permits it is durable in an append-only,
 hash-chained log, and the gate that decides reads only what that log holds. An
-approval from outside the agent---a validator's opinion, a person's sign-off---is
-not a call the gate makes but an input the log records, bound to the proposal it
-was asked about and signed by whoever gave or relayed it, with a key its
-manifest declares, so the gated agent can neither redirect it nor author it. The stochastic part of the system is the
+answer from outside the agent (a validator's opinion, a person's sign-off or
+refusal) is not a call the gate makes but an input the log records, bound to the
+proposal it was asked about. Where participants declare keys and the daemon
+refuses unsigned callers, it is also signed by whoever gave or relayed it, so the
+gated agent can neither redirect it nor author it. The stochastic part of the system is the
 model; everything that decides whether its output may touch the world is a pure
 function of recorded events, so a replay re-derives every decision without
 re-running the model. We call this a \emph{deterministic envelope around a
@@ -46,13 +47,15 @@ evidence behind it:
 \item \textbf{Evidence before effect} \ev{implemented, measured}: an architecture
   of a signed hash-chained log, a saga engine that is a pure fold over it, gates
   resolved at admission and decided before execution or before release, and an
-  outbox that holds effects until their evidence is durable---on the MCP edge;
-  on the SDK path a cooperating client runs the effect after the record is
-  durable---with eight invariants and where each is enforced
+  outbox that holds effects until their evidence is durable (on the edge that
+  fronts Model Context Protocol (MCP) tools; through the Python software
+  development kit (SDK) a cooperating client runs the effect after the record is
+  durable), with eight invariants and where each is enforced
   (\cref{sec:model,sec:design}).
 \item \textbf{Approvals as recorded inputs} \ev{implemented, tested}:
-  answers from outside are records the gate reads, not calls it makes, signed by
-  whoever gave or relayed them and checkable offline; they are bound to the proposal they
+  answers from outside are records the gate reads, not calls it makes, signed,
+  where participants declare keys, by whoever gave or relayed them, and
+  checkable offline; they are bound to the proposal they
   were asked about, and a question carries the facts it is about. Binding an
   approval to its object is also stated by Cordon~\cite{cordon},
   NovaFabric~\cite{novafabric} and payment regulation~\cite{psd2rts}; what we
@@ -66,9 +69,10 @@ evidence behind it:
   model outputs, in three conditions and an always-approve oracle over the
   recorded intakes, the later runs' hypotheses and predicted counts recorded, with
   the harness, before they ran (\cref{sec:eval-model}).
-\item \textbf{Four defects, reported} \ev{implemented, tested}: what designing
-  the evaluation surfaced in a system that already passed its own gates---first,
-  an instance of post-approval substitution~\cite{loopjacking} that an audit
+\item \textbf{Defects, reported} \ev{implemented, tested}: four found while
+  designing the evaluation, in a system that had passed every check its own build
+  defines, two while closing a review, and more by an external review of this
+  paper: first, an instance of post-approval substitution~\cite{loopjacking} that an audit
   re-deriving each verdict in isolation cannot see (\cref{sec:findings}).
 \end{enumerate}
 
@@ -86,7 +90,9 @@ experiment uses one model and fifty author-written applications. We state every
 such limit where the number appears and collect them in \cref{sec:limits}.
 
 \emph{Artifact availability.} Janus is open source under the MIT license at
-\url{https://github.com/mustafarslan/janus}. Every number in this paper
-traces to a file in \code{docs/bench/}, to the source tree, or to a committed
-run directory under \code{docs/bench/agentic/} holding the run's signed log and
-public key, and each is reproduced by a command named in \cref{sec:artifact}.
+\url{https://github.com/mustafarslan/janus}. Every number carries a comment in
+the \LaTeX{} source naming the file, test, command or committed run directory it
+comes from; each run directory under \code{docs/bench/agentic/} holds the run's
+signed log and public key. The deterministic results are reproduced by the
+commands in \cref{sec:artifact}; the model runs can be re-run but, needing the
+model service, not reproduced bit for bit.

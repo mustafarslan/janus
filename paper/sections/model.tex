@@ -9,8 +9,8 @@ registered compensating action), \code{IRREVERSIBLE\_GATED} (an effect the
 outbox can hold) or \code{IRREVERSIBLE\_IMMEDIATE} (in the world as soon as the
 participant returns). One \emph{writer} process, the daemon
 \code{janus-orchd}, owns an evidence log and hosts the saga engine; agents,
-consoles and interception proxies are its clients. \emph{Answerers}---validator
-processes and people---decide the gates the engine cannot decide itself. An
+consoles and interception proxies are its clients. \emph{Answerers} (validator
+processes and people) decide the gates the engine cannot decide itself. An
 \emph{auditor} holds a copy of the log (or an exported bundle) and the writer's
 public key, and nothing else.
 
@@ -39,8 +39,16 @@ public key, and nothing else.
 \begin{itemize}
 \item \textbf{Participants without keys, and calls that record nothing.} A
   participant whose manifest declares no key is taken at its word unless the
-  daemon requires every caller to sign; replication, operator and read-only
-  calls are not authenticated, and the channel is not encrypted.
+  daemon requires every caller to sign; replication, operator, effect-delivery
+  and read-only calls are not authenticated, and the channel is not encrypted.
+\item \textbf{What a signature does not cover.} A declaration's signature covers
+  its saga, step and facts but not its attempt, so a captured declaration can be
+  replayed into a later attempt of the same step. An answer's signature covers
+  its verdict, not the facts the answerer was shown: the fold binds the answer to
+  the pinned proposal, so an answerer deceived about the facts over the
+  unencrypted channel approves the real proposal. A key withdrawn from a manifest
+  is still accepted for sagas that pinned the version declaring it, until they
+  end.
 \item \textbf{A writer-key holder writing a consistent false history.} Segment
   signatures prove who wrote a log, not that it is the only log that writer
   produced. External anchoring of log heads is designed but not built; today an

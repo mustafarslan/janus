@@ -40,13 +40,13 @@ signed log holds, and none holds the effect until its record is durable.
 NovaFabric~\cite{novafabric} seals an agent run into a signed capsule on an
 append-only Merkle log, exports a bundle it states stock tools can verify (not
 yet exercised by an independent verifier), and requires a promotion approval
-from a key other than the proposer's, linked to a digest of the proposal---but
+from a key other than the proposer's, linked to a digest of the proposal, but
 gates the lifecycle of evidence rather than live effects, and states the
 opposite of evidence before effect: capture ``must never stall or fail the
 agent''. Agent Flight Recorder~\cite{agentflightrecorder} hash-chains agent
 events into Merkle epochs anchored on a public chain, which defends against the
-operator rewriting its own history---a property Janus lacks
-(\cref{sec:model-out})---and records guardrail verdicts without gating on them.
+operator rewriting its own history, a property Janus lacks
+(\cref{sec:model-out}), and records guardrail verdicts without gating on them.
 Proof of Execution~\cite{proofofexecution} is the closest to our title property:
 every effect passes one gateway, events are signed, and its Lemma~1 has the
 effector obtain ``a sealed acknowledgment'' before ``committing any persistent
