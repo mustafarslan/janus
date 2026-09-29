@@ -16,6 +16,17 @@
 \lstset{basicstyle=\ttfamily\scriptsize,breaklines=true,columns=fullflexible,
   frame=single,framerule=0.3pt,xleftmargin=2pt,xrightmargin=2pt}
 \newcommand{\code}[1]{\texttt{#1}}
+
+% No em dashes anywhere in the paper, including the ones IEEEtran puts after
+% "Abstract" and "Index Terms": a colon instead. Each patch applies only to the
+% branch of the class that contains it.
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd{\abstract}{\textit{\abstractname}---}{\textit{\abstractname}:\ }{}{}
+\patchcmd{\abstract}{\textbf{\abstractname}---}{\textbf{\abstractname}:\ }{}{}
+\patchcmd{\IEEEkeywords}{\textit{\IEEEkeywordsname}---}{\textit{\IEEEkeywordsname}:\ }{}{}
+\patchcmd{\IEEEkeywords}{\textbf{\IEEEkeywordsname}---}{\textbf{\IEEEkeywordsname}:\ }{}{}
+\makeatother
 \newcommand{\ev}[1]{\textit{(#1)}}
 
 % Every number in this paper carries a comment naming where it was measured:
@@ -23,6 +34,7 @@
 % docs/bench/agentic/. A number without one is a bug.
 
 \begin{document}
+\bstctlcite{IEEEexample:BSTcontrol}
 
 \title{Janus: Evidence-Before-Effect Sagas and\\Offline-Verifiable Provenance for Agentic LLMs}
 
