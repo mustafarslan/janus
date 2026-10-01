@@ -1,5 +1,7 @@
 # Janus
 
+[![arXiv](https://img.shields.io/badge/arXiv-2609.38266-b31b1b.svg)](https://arxiv.org/abs/2609.38266)
+
 **A transactional evidence layer for agentic AI.**
 
 Janus sits between AI agents and the systems they act on, and makes every action
